@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>Kapasitas Operator</title>
+<style>
+  :root{
+    --bg:#16171c; --panel:#1d1f26; --panel2:#23252d; --border:#333540;
+    --text:#e7e8ec; --text-dim:#9a9ca6; --accent:#4d9fff;
+    --good:#3ecf8e; --warn:#e0a72e; --bad:#e0554e;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;}
+  .app{max-width:1500px;margin:0 auto;padding:16px;}
+  header{display:flex;justify-content:space-between;align-items:center;padding:12px 18px;background:var(--panel);border-radius:10px;border:1px solid var(--border);margin-bottom:12px;flex-wrap:wrap;gap:8px;}
+  header h1{font-size:15px;margin:0;font-weight:600;}
+  .sync-status{font-size:12px;color:var(--text-dim);display:flex;align-items:center;gap:8px;}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--text-dim);}
+  .dot.ok{background:var(--good);}
+  .dot.bad{background:var(--bad);}
+  .dot.busy{background:var(--warn);}
+  nav{display:flex;gap:6px;margin-bottom:14px;}
+  nav button{background:var(--panel2);border:1px solid var(--border);color:var(--text-dim);padding:9px 16px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;}
+  nav button.active{background:var(--accent);color:#0b1420;border-color:var(--accent);font-weight:600;}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;margin-bottom:14px;overflow:hidden;}
+  .panel-title{padding:11px 16px;font-size:12px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid var(--border);}
+  .panel-body{padding:16px;}
+  input, select{background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:7px 9px;border-radius:6px;font-size:13px;outline:none;}
+  input:focus, select:focus{border-color:var(--accent);}
+  button{background:var(--accent);color:#0b1420;border:none;padding:8px 14px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;}
+  button.secondary{background:transparent;color:var(--text);border:1px solid var(--border);font-weight:500;}
+  button.danger{background:transparent;color:var(--bad);border:1px solid var(--bad);font-weight:500;padding:4px 9px;font-size:12px;}
+  button.small{padding:4px 9px;font-size:11.5px;}
+  button:hover{filter:brightness(1.08);}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;}
+  .field{display:flex;flex-direction:column;gap:4px;}
+  .field label{font-size:11px;color:var(--text-dim);}
+  .table-wrap{overflow-x:auto;}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:900px;}
+  thead th{text-align:left;padding:8px 10px;background:var(--panel2);color:var(--text-dim);font-weight:600;white-space:nowrap;border-bottom:1px solid var(--border);}
+  tbody td{padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap;}
+  tbody tr:hover{background:var(--panel2);}
+  .out-input{width:46px;padding:4px 5px;font-size:12px;text-align:center;}
+  .style-input, .proses-input{width:150px;}
+  .eff-pill{display:inline-block;padding:2px 8px;border-radius:20px;font-weight:600;font-size:11.5px;}
+  .eff-good{background:rgba(62,207,142,.15);color:var(--good);}
+  .eff-warn{background:rgba(224,167,46,.15);color:var(--warn);}
+  .eff-bad{background:rgba(224,85,78,.15);color:var(--bad);}
+  .empty{padding:36px;text-align:center;color:var(--text-dim);font-size:13px;}
+  .hint{font-size:11.5px;color:var(--text-dim);margin-top:6px;}
+  .modal-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-start;justify-content:center;padding-top:60px;z-index:50;}
+  .modal{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:18px;width:420px;max-width:92vw;}
+  .modal h3{margin:0 0 12px;font-size:14px;}
+  .modal .field{margin-bottom:10px;width:100%;}
+  .modal .field input, .modal .field select{width:100%;}
+  .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;}
+  .app-relative{position:relative;}
+  .badge{font-size:10.5px;background:var(--panel2);color:var(--text-dim);padding:2px 7px;border-radius:10px;border:1px solid var(--border);}
+</style>
+</head>
+<body>
+<div class="app app-relative" id="appRoot">
+
+  <header>
+    <div><h1>KAPASITAS OPERATOR</h1></div>
+    <div class="sync-status">
+      <span class="dot" id="syncDot"></span>
+      <span id="syncText">Belum tersambung</span>
+      <button class="secondary small" id="syncNowBtn">Sinkron sekarang</button>
+    </div>
+  </header>
+
+  <nav>
+    <button class="active" data-tab="settings">Pengaturan</button>
+    <button data-tab="assignment">Assignment</button>
+    <button data-tab="kapasitas">Input Kapasitas</button>
+  </nav>
+
+  <!-- TAB: SETTINGS -->
+  <div id="tab-settings" class="tab-content">
+    <div class="panel">
+      <div class="panel-title">Koneksi Google Sheets</div>
+      <div class="panel-body">
+        <div class="row">
+          <div class="field" style="flex:1;min-width:280px;">
+            <label>Web App URL (dari Apps Script)</label>
+            <input type="text" id="gasUrlInput" placeholder="https://script.google.com/macros/s/xxxx/exec" style="width:100%;">
+          </div>
+          <div class="field"><label>&nbsp;</label><button id="saveUrlBtn">Simpan URL</button></div>
+          <div class="field"><label>&nbsp;</label><button class="secondary" id="testConnBtn">Tes koneksi</button></div>
+        </div>
+        <div class="hint" id="settingsMsg"></div>
+        <div class="hint">Terakhir sinkron: <span id="lastSyncTime">belum pernah</span></div>
+        <div class="hint">Data referensi (DATA OPT & Data SMV) diambil otomatis saat tersambung. Terakhir diambil: <span id="lastRefTime">belum pernah</span></div>
+        <div class="row" style="margin-top:10px;">
+          <button class="secondary" id="refreshRefBtn">Ambil ulang DATA OPT + Data SMV</button>
+          <button class="secondary" id="pullDataBtn">Muat ulang Assignment + Kapasitas dari Sheets</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: ASSIGNMENT -->
+  <div id="tab-assignment" class="tab-content" style="display:none;">
+    <div class="panel">
+      <div class="panel-body">
+        <div class="row">
+          <div class="field"><label>Tanggal</label><input type="date" id="assignDate"></div>
+          <div class="field"><label>Filter Line</label><select id="assignLineFilter"><option value="">Semua line</option></select></div>
+          <div class="field" style="flex:1;min-width:200px;"><label>Cari</label><input type="text" id="assignSearch" placeholder="Cari nama / no. absen / proses" style="width:100%;"></div>
+          <div class="field"><label>&nbsp;</label><button class="secondary" id="toggleCopyPanelBtn">Salin ke tanggal lain</button></div>
+          <div class="field"><label>&nbsp;</label><button class="secondary" id="openImportBtn">Impor data awal</button></div>
+          <div class="field"><label>&nbsp;</label><button id="saveAssignBtn">💾 Simpan &amp; cetak ke Sheets</button></div>
+          <span class="hint" id="assignSaveMsg"></span>
+        </div>
+        <div class="hint">Tip: copy beberapa baris nilai dari Excel/Google Sheets, lalu paste ke satu sel Style atau Proses — otomatis terisi berurutan ke bawah. Atau pakai tombol "Isi ke bawah" di header kolom untuk menyamakan satu nilai ke semua baris.</div>
+        <div id="copyPanel" style="display:none;border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px;background:var(--panel2);">
+          <div class="row" style="margin-bottom:0;">
+            <div class="field"><label>Dari tanggal (sudah dipilih di atas)</label><input type="text" id="copyFromDisplay" disabled></div>
+            <div class="field"><label>Sampai tanggal</label><input type="date" id="copyToDate"></div>
+            <div class="field"><label>&nbsp;</label><button id="applyCopyBtn">Terapkan salinan</button></div>
+          </div>
+          <div class="hint">Menyalin semua assignment terisi pada tanggal di atas ke setiap tanggal dalam rentang tersebut (menimpa yang sudah ada di tanggal tujuan bila kunci sama).</div>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Assignment operator aktif</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>No. Absen</th><th>Nama</th>
+            <th>Line <button class="secondary small" id="fillLineBtn" title="Isi sama ke semua baris di bawah" style="padding:2px 6px;">Isi ke bawah</button></th>
+            <th>Style <button class="secondary small" id="fillStyleBtn" title="Isi sama ke semua baris di bawah" style="padding:2px 6px;">Isi ke bawah</button></th>
+            <th>Proses <button class="secondary small" id="fillProsesBtn" title="Isi sama ke semua baris di bawah" style="padding:2px 6px;">Isi ke bawah</button></th>
+            <th></th>
+          </tr></thead>
+          <tbody id="assignBody"></tbody>
+        </table>
+        <div class="empty" id="assignEmpty" style="display:none;">Belum ada data operator aktif. Cek koneksi di tab Pengaturan.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: KAPASITAS -->
+  <div id="tab-kapasitas" class="tab-content" style="display:none;">
+    <div class="panel">
+      <div class="panel-body">
+        <div class="row">
+          <div class="field"><label>Tanggal</label><input type="date" id="kapDate"></div>
+          <div class="field"><label>Line</label><select id="kapLine"></select></div>
+          <div class="field" style="flex:1;min-width:200px;"><label>Cari</label><input type="text" id="kapSearch" placeholder="Cari nama / no. absen / proses" style="width:100%;"></div>
+          <div class="field"><label>&nbsp;</label><button class="secondary" id="addAdhocBtn">+ Tambah operator</button></div>
+          <div class="field"><label>&nbsp;</label><button id="saveKapBtn">💾 Simpan &amp; cetak ke Sheets</button></div>
+          <span class="hint" id="kapSaveMsg"></span>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Input output per jam</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>No. Absen</th><th>Nama</th><th>Style</th><th>Proses</th><th>SMV</th>
+              <th>Rata-rata</th><th>EFF</th>
+              <th>J1</th><th>J2</th><th>J3</th><th>J4</th><th>J5</th><th>J6</th><th>J7</th><th>J8</th><th>J9</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="kapBody"></tbody>
+        </table>
+        <div class="empty" id="kapEmpty" style="display:none;">Belum ada operator ter-assign untuk tanggal & line ini.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const LINES = ['A01','F01','F02','F03','F04','F05','F06','F07','F08','S-F08','F09','F10','F11','F12','F13','F14','S-F14','CAD','K08','K09','K49'];
+
+let config = { gasUrl: '' };
+let dataOpt = [];      // {NIP, NAMA, ...}
+let dataSmv = [];      // {STYLE, SECTION, PROSES, SMV, CAPACITY 100% (PCS/JAM), LEVEL SKILL}
+let assignments = [];  // {localId, tanggal, noAbsen, nama, line, style, proses, synced}
+let kapasitas = [];    // {id, tanggal, noAbsen, nama, line, style, proses, smv, outputs:[9], synced}
+let pendingDeleteAssign = []; // [{TANGGAL, 'NO. ABSEN', PROSES}]
+let pendingDeleteKap = [];    // [{ID}]
+let lastSyncTime = null;
+let lastRefTime = null;
+
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+function fmtDate(iso){ if(!iso) return ''; const [y,m,d]=iso.split('-'); return `${d}/${m}/${y}`; }
+
+async function storeGet(key, shared){
+  try{ const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; }catch(e){ return null; }
+}
+async function storeSet(key,val, shared){
+  try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){}
+}
+
+/* ---------- GAS communication ---------- */
+async function gasGet(action){
+  if(!config.gasUrl) throw new Error('URL belum diatur');
+  const res = await fetch(`${config.gasUrl}?action=${action}`);
+  const data = await res.json();
+  if(!data.ok) throw new Error(data.error || 'Gagal mengambil data');
+  return data.rows;
+}
+async function gasPost(action, rows){
+  if(!config.gasUrl) throw new Error('URL belum diatur');
+  const res = await fetch(config.gasUrl, {
+    method:'POST',
+    headers:{ 'Content-Type':'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action, rows })
+  });
+  const data = await res.json();
+  if(!data.ok) throw new Error(data.error || 'Gagal mengirim data');
+  return data;
+}
+
+function setSyncStatus(state, text){
+  const dot = document.getElementById('syncDot');
+  dot.className = 'dot' + (state ? ' '+state : '');
+  document.getElementById('syncText').textContent = text;
+}
+
+async function testConnection(){
+  const msg = document.getElementById('settingsMsg');
+  msg.textContent = 'Menguji koneksi...';
+  try{
+    await gasGet('getSMV');
+    msg.textContent = 'Koneksi berhasil.';
+    setSyncStatus('ok','Tersambung');
+  }catch(e){
+    msg.textContent = 'Gagal konek: ' + e.message + ' (kemungkinan diblokir oleh sandbox artifact — coba download file ini dan buka langsung di browser).';
+    setSyncStatus('bad','Gagal konek');
+  }
+}
+
+async function refreshReferenceData(){
+  if(!config.gasUrl) return;
+  try{
+    setSyncStatus('busy','Mengambil data referensi...');
+    dataOpt = await gasGet('getDataOpt');
+    dataSmv = await gasGet('getSMV');
+    await storeSet('kap_dataOpt', dataOpt, true);
+    await storeSet('kap_dataSmv', dataSmv, true);
+    lastRefTime = new Date();
+    document.getElementById('lastRefTime').textContent = lastRefTime.toLocaleTimeString('id-ID');
+    setSyncStatus('ok','Tersambung');
+    renderAssignmentTable();
+    renderKapasitasTable();
+  }catch(e){
+    setSyncStatus('bad','Gagal ambil referensi: '+e.message);
+  }
+}
+
+async function pullExistingData(){
+  if(!config.gasUrl) return;
+  try{
+    const remoteAssign = await gasGet('getAssignment');
+    const remoteKap = await gasGet('getKapasitas');
+    assignments = remoteAssign.map(r => ({
+      localId: uid(),
+      tanggal: normalizeDate_(r['TANGGAL']),
+      noAbsen: r['NO. ABSEN'] || '',
+      nama: r['NAMA'] || '',
+      line: r['LINE'] || '',
+      style: r['STYLE'] || '',
+      proses: r['PROSES'] || '',
+      synced: true
+    }));
+    kapasitas = remoteKap.map(r => ({
+      id: r['ID'] || uid(),
+      tanggal: normalizeDate_(r['TANGGAL']),
+      noAbsen: r['NO. ABSEN'] || '',
+      nama: r['NAMA'] || '',
+      line: r['LINE'] || '',
+      style: r['STYLE'] || '',
+      proses: r['PROSES'] || '',
+      smv: Number(r['SMV']) || 0,
+      outputs: [1,2,3,4,5,6,7,8,9].map(i => r['OUTPUT JAM '+i] === '' || r['OUTPUT JAM '+i]===undefined ? '' : Number(r['OUTPUT JAM '+i])),
+      synced: true
+    }));
+    await storeSet('kap_assignments', assignments, true);
+    await storeSet('kap_kapasitas', kapasitas, true);
+  }catch(e){
+    console.error(e);
+  }
+}
+function normalizeDate_(v){
+  if(!v) return '';
+  if(typeof v === 'string' && v.match(/^\d{4}-\d{2}-\d{2}/)) return v.slice(0,10);
+  try{ const d = new Date(v); if(!isNaN(d)) return d.toISOString().slice(0,10); }catch(e){}
+  return String(v);
+}
+
+async function syncNow(evtOrMsgElId){
+  const msgElId = typeof evtOrMsgElId === 'string' ? evtOrMsgElId : null;
+  const setMsg = (t)=>{ if(msgElId){ const el=document.getElementById(msgElId); if(el) el.textContent = t; } };
+  if(!config.gasUrl){ setSyncStatus('bad','URL belum diatur'); setMsg('Gagal: URL Apps Script belum diatur di tab Pengaturan.'); return; }
+  setSyncStatus('busy','Menyinkronkan...');
+  setMsg('Menyimpan & mencetak ke Sheets...');
+  try{
+    const assignRows = assignments
+      .filter(a => a.style && a.proses)
+      .map(a => ({ 'TANGGAL': a.tanggal, 'LINE': a.line, 'NO. ABSEN': a.noAbsen, 'NAMA': a.nama, 'STYLE': a.style, 'PROSES': a.proses }));
+    if(assignRows.length) await gasPost('syncAssignment', assignRows);
+    if(pendingDeleteAssign.length){ await gasPost('deleteAssignment', pendingDeleteAssign); pendingDeleteAssign = []; }
+
+    const kapRows = kapasitas.map(k => {
+      const {rata} = computeRata(k.outputs);
+      const effDecimal = (rata!==null && k.smv) ? (rata/k.smv) : '';
+      const row = { 'ID': k.id, 'TANGGAL': k.tanggal, 'LINE': k.line, 'NO. ABSEN': k.noAbsen, 'NAMA': k.nama, 'STYLE': k.style, 'PROSES': k.proses, 'SMV': k.smv, 'TOTAL': (k.outputs||[]).filter(v=>v!=='' && v!=null).reduce((a,b)=>a+Number(b),0), 'RATA-RATA': rata!==null?rata:'', 'EFF': effDecimal };
+      k.outputs.forEach((v,i)=>{ row['OUTPUT JAM '+(i+1)] = v; });
+      return row;
+    });
+    if(kapRows.length) await gasPost('syncKapasitas', kapRows);
+    if(pendingDeleteKap.length){ await gasPost('deleteKapasitas', pendingDeleteKap); pendingDeleteKap = []; }
+
+    assignments.forEach(a=>a.synced=true);
+    kapasitas.forEach(k=>k.synced=true);
+    await storeSet('kap_assignments', assignments, true);
+    await storeSet('kap_kapasitas', kapasitas, true);
+    lastSyncTime = new Date();
+    document.getElementById('lastSyncTime').textContent = lastSyncTime.toLocaleTimeString('id-ID');
+    setSyncStatus('ok','Tersinkron');
+    setMsg('Tersimpan ke Sheets pukul '+lastSyncTime.toLocaleTimeString('id-ID')+' ✓');
+  }catch(e){
+    setSyncStatus('bad','Gagal sinkron: '+e.message);
+    setMsg('Gagal menyimpan: '+e.message);
+  }
+}
+
+/* ---------- Calc helpers ---------- */
+function computeRata(outputs){
+  const vals = (outputs||[]).filter(v=>v!=='' && v!=null && !isNaN(v)).map(Number);
+  if(vals.length===0) return {rata:null};
+  return {rata: Math.round(vals.reduce((a,b)=>a+b,0)/vals.length)};
+}
+function effClass(eff){
+  if(eff===null) return '';
+  if(eff>=70) return 'eff-good';
+  if(eff>=50) return 'eff-warn';
+  return 'eff-bad';
+}
+function lookupSmv(style, proses){
+  const found = dataSmv.find(r => (r['STYLE']||'').trim().toUpperCase() === (style||'').trim().toUpperCase() && (r['PROSES']||'').trim().toUpperCase() === (proses||'').trim().toUpperCase());
+  if(!found) return 0;
+  const cap = found['CAPACITY 100% (PCS/JAM)'] || found['CAPACITY'] || 0;
+  return Number(cap) || 0;
+}
+function stylesList(){ return [...new Set(dataSmv.map(r=>r['STYLE']).filter(Boolean))].sort(); }
+function prosesForStyle(style){ return [...new Set(dataSmv.filter(r=>(r['STYLE']||'').trim().toUpperCase()===(style||'').trim().toUpperCase()).map(r=>r['PROSES']).filter(Boolean))].sort(); }
+
+/* ---------- Datalists ---------- */
+function ensureDatalists(){
+  let dl = document.getElementById('styleList');
+  if(!dl){ dl = document.createElement('datalist'); dl.id='styleList'; document.body.appendChild(dl); }
+  dl.innerHTML = stylesList().map(s=>`<option value="${s}">`).join('');
+}
+function prosesDatalistFor(id, style){
+  let dl = document.getElementById(id);
+  if(!dl){ dl = document.createElement('datalist'); dl.id=id; document.body.appendChild(dl); }
+  dl.innerHTML = prosesForStyle(style).map(p=>`<option value="${p}">`).join('');
+}
+
+/* ---------- Assignment tab ---------- */
+function renderAssignmentTable(){
+  ensureDatalists();
+  const tbody = document.getElementById('assignBody');
+  const date = document.getElementById('assignDate').value;
+  const search = document.getElementById('assignSearch').value.trim().toLowerCase();
+  const lineFilter = document.getElementById('assignLineFilter').value;
+  const empty = document.getElementById('assignEmpty');
+
+  if(!dataOpt.length){ tbody.innerHTML=''; empty.style.display='block'; empty.textContent='Belum ada data operator aktif. Cek koneksi di tab Pengaturan.'; return; }
+
+  // rows for this date: at least one row per active operator, plus extra rows if operator has >1 assignment
+  let rows = [];
+  dataOpt.forEach(op=>{
+    const nip = op['NIP']; const nama = op['NAMA'];
+    const existing = assignments.filter(a=>a.tanggal===date && a.noAbsen===nip);
+    if(existing.length===0){
+      rows.push({ localId:null, noAbsen:nip, nama, line:'', style:'', proses:'', tanggal:date });
+    }else{
+      existing.forEach(e=>rows.push(e));
+    }
+  });
+
+  if(search){
+    rows = rows.filter(r => `${r.nama} ${r.noAbsen} ${r.proses}`.toLowerCase().includes(search));
+  }
+  if(lineFilter){
+    rows = rows.filter(r => r.line === lineFilter);
+  }
+
+  if(rows.length===0){ tbody.innerHTML=''; empty.style.display='block'; empty.textContent='Tidak ada hasil pencarian.'; return; }
+  empty.style.display='none';
+
+  tbody.innerHTML = rows.map((r,idx)=>{
+    const rid = r.localId || ('new_'+idx);
+    const prosesDlId = 'proses_assign_'+idx;
+    return `
+      <tr data-rid="${rid}" data-noabsen="${r.noAbsen}" data-nama="${(r.nama||'').replace(/"/g,'&quot;')}">
+        <td>${r.noAbsen}</td>
+        <td>${r.nama}</td>
+        <td>
+          <select class="a-line">
+            <option value="">-</option>
+            ${LINES.map(l=>`<option value="${l}" ${r.line===l?'selected':''}>${l}</option>`).join('')}
+          </select>
+        </td>
+        <td><input class="style-input a-style" list="styleList" value="${r.style||''}" placeholder="Cari style..."></td>
+        <td><input class="proses-input a-proses" list="${prosesDlId}" value="${r.proses||''}" placeholder="Cari proses..."></td>
+        <td>
+          <button class="secondary small a-addrow" title="Tambah proses lain untuk operator ini">+ Proses</button>
+          ${r.localId ? '<button class="danger small a-remove" style="margin-left:4px;">Hapus</button>' : ''}
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  // wire proses datalists per row based on current style value
+  tbody.querySelectorAll('tr').forEach((tr,idx)=>{
+    const styleInput = tr.querySelector('.a-style');
+    const prosesInput = tr.querySelector('.a-proses');
+    const dlId = 'proses_assign_'+idx;
+    prosesDatalistFor(dlId, styleInput.value);
+    styleInput.addEventListener('input', ()=>{ prosesDatalistFor(dlId, styleInput.value); saveAssignmentRow(tr); });
+    prosesInput.addEventListener('input', ()=> saveAssignmentRow(tr));
+    tr.querySelector('.a-line').addEventListener('change', ()=> saveAssignmentRow(tr));
+    styleInput.addEventListener('paste', (e)=> handleColumnPaste(e, '.a-style'));
+    prosesInput.addEventListener('paste', (e)=> handleColumnPaste(e, '.a-proses'));
+    const removeBtn = tr.querySelector('.a-remove');
+    if(removeBtn) removeBtn.addEventListener('click', ()=> removeAssignmentRow(tr));
+    tr.querySelector('.a-addrow').addEventListener('click', ()=>{
+      const noAbsen = tr.getAttribute('data-noabsen');
+      const nama = tr.getAttribute('data-nama');
+      assignments.push({ localId: uid(), tanggal: date, noAbsen, nama, line:'', style:'', proses:'', synced:false });
+      storeSet('kap_assignments', assignments, true);
+      renderAssignmentTable();
+    });
+  });
+}
+
+function handleColumnPaste(e, colSelector){
+  const text = (e.clipboardData || window.clipboardData).getData('text');
+  const lines = text.split(/\r?\n/).map(s=>s.trim()).filter(s=>s!=='');
+  if(lines.length <= 1) return; // biarkan paste normal satu nilai berjalan seperti biasa
+  e.preventDefault();
+  const tbody = document.getElementById('assignBody');
+  const rowEls = [...tbody.querySelectorAll('tr')];
+  const startTr = e.target.closest('tr');
+  const startIdx = rowEls.indexOf(startTr);
+  lines.forEach((val, i)=>{
+    const targetTr = rowEls[startIdx + i];
+    if(!targetTr) return;
+    const inp = targetTr.querySelector(colSelector);
+    if(!inp) return;
+    inp.value = val;
+    inp.dispatchEvent(new Event('input', { bubbles:true }));
+  });
+}
+
+function fillColumnDown(colSelector){
+  const tbody = document.getElementById('assignBody');
+  const rowEls = [...tbody.querySelectorAll('tr')];
+  if(rowEls.length < 2) return;
+  const firstInput = rowEls[0].querySelector(colSelector);
+  if(!firstInput || firstInput.value === '') return;
+  const val = firstInput.value;
+  rowEls.slice(1).forEach(tr=>{
+    const inp = tr.querySelector(colSelector);
+    if(!inp) return;
+    inp.value = val;
+    inp.dispatchEvent(new Event(inp.tagName==='SELECT' ? 'change' : 'input', { bubbles:true }));
+  });
+}
+
+function saveAssignmentRow(tr){
+  const date = document.getElementById('assignDate').value;
+  const noAbsen = tr.getAttribute('data-noabsen');
+  const nama = tr.getAttribute('data-nama');
+  const rid = tr.getAttribute('data-rid');
+  const line = tr.querySelector('.a-line').value;
+  const style = tr.querySelector('.a-style').value.trim();
+  const proses = tr.querySelector('.a-proses').value.trim();
+
+  let existing = rid.startsWith('new_') ? null : assignments.find(a=>a.localId===rid);
+  if(!existing){
+    const localId = uid();
+    existing = { localId, tanggal: date, noAbsen, nama, line, style, proses, synced:false };
+    assignments.push(existing);
+    tr.setAttribute('data-rid', localId);
+  }else{
+    const wasComplete = existing.style && existing.proses;
+    existing.line = line; existing.style = style; existing.proses = proses; existing.synced=false;
+    if(wasComplete && !(style && proses)){
+      pendingDeleteAssign.push({ 'TANGGAL': existing.tanggal, 'NO. ABSEN': existing.noAbsen, 'PROSES': existing.proses });
+    }
+  }
+  storeSet('kap_assignments', assignments, true);
+}
+
+function removeAssignmentRow(tr){
+  const rid = tr.getAttribute('data-rid');
+  const target = assignments.find(a=>a.localId===rid);
+  if(target && target.style && target.proses){
+    pendingDeleteAssign.push({ 'TANGGAL': target.tanggal, 'NO. ABSEN': target.noAbsen, 'PROSES': target.proses });
+  }
+  assignments = assignments.filter(a=>a.localId!==rid);
+  storeSet('kap_assignments', assignments, true);
+  renderAssignmentTable();
+}
+
+/* copy to date range */
+function applyCopyRange(){
+  const fromDate = document.getElementById('assignDate').value;
+  const toDate = document.getElementById('copyToDate').value;
+  if(!fromDate || !toDate) return;
+  const source = assignments.filter(a=>a.tanggal===fromDate && a.style && a.proses);
+  if(source.length===0) return;
+  let cur = new Date(fromDate);
+  cur.setDate(cur.getDate()+1);
+  const end = new Date(toDate);
+  while(cur <= end){
+    const dStr = cur.toISOString().slice(0,10);
+    source.forEach(s=>{
+      const already = assignments.find(a=>a.tanggal===dStr && a.noAbsen===s.noAbsen && a.proses===s.proses);
+      if(already){
+        already.line = s.line; already.style = s.style; already.synced=false;
+      }else{
+        assignments.push({ localId: uid(), tanggal: dStr, noAbsen: s.noAbsen, nama: s.nama, line: s.line, style: s.style, proses: s.proses, synced:false });
+      }
+    });
+    cur.setDate(cur.getDate()+1);
+  }
+  storeSet('kap_assignments', assignments, true);
+  renderAssignmentTable();
+  document.getElementById('copyPanel').style.display='none';
+}
+
+/* ---------- Kapasitas tab ---------- */
+function renderKapasitasTable(){
+  ensureDatalists();
+  const tbody = document.getElementById('kapBody');
+  const date = document.getElementById('kapDate').value;
+  const line = document.getElementById('kapLine').value;
+  const search = document.getElementById('kapSearch').value.trim().toLowerCase();
+  const empty = document.getElementById('kapEmpty');
+
+  const assigned = assignments.filter(a=>a.tanggal===date && a.line===line && a.style && a.proses);
+
+  let rows = assigned.map(a=>{
+    let k = kapasitas.find(k=>k.tanggal===date && k.line===line && k.noAbsen===a.noAbsen && k.proses===a.proses);
+    if(!k){
+      k = { id: uid(), tanggal:date, noAbsen:a.noAbsen, nama:a.nama, line, style:a.style, proses:a.proses, smv: lookupSmv(a.style,a.proses), outputs:['','','','','','','','',''], synced:false };
+      kapasitas.push(k);
+    }else{
+      k.style = a.style; k.proses = a.proses;
+    }
+    return k;
+  });
+
+  if(search){ rows = rows.filter(r=>`${r.nama} ${r.noAbsen} ${r.proses}`.toLowerCase().includes(search)); }
+
+  if(rows.length===0){ tbody.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display='none';
+
+  tbody.innerHTML = rows.map((k,idx)=>{
+    const {rata} = computeRata(k.outputs);
+    const eff = (rata!==null && k.smv) ? (rata/k.smv*100) : null;
+    const prosesDlId = 'proses_kap_'+idx;
+    const outputsCells = k.outputs.map((v,i)=>`<td><input type="number" class="out-input k-out" data-idx="${i}" value="${v}"></td>`).join('');
+    return `
+      <tr data-id="${k.id}">
+        <td>${k.noAbsen}</td><td>${k.nama}</td>
+        <td><input class="style-input k-style" list="styleList" value="${k.style}"></td>
+        <td><input class="proses-input k-proses" list="${prosesDlId}" value="${k.proses}"></td>
+        <td class="k-smv">${k.smv || '-'}</td>
+        <td class="k-rata">${rata!==null?rata:'-'}</td>
+        <td class="k-eff">${eff!==null?`<span class="eff-pill ${effClass(eff)}">${eff.toFixed(2)}%</span>`:'-'}</td>
+        ${outputsCells}
+        <td>
+          <button class="secondary small k-autofill" title="Salin nilai Jam 1 ke Jam 2-7">Isi 1-7</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  tbody.querySelectorAll('tr').forEach((tr,idx)=>{
+    const styleInput = tr.querySelector('.k-style');
+    const prosesInput = tr.querySelector('.k-proses');
+    const dlId = 'proses_kap_'+idx;
+    prosesDatalistFor(dlId, styleInput.value);
+
+    function recalcRow(){
+      const id = tr.getAttribute('data-id');
+      const k = kapasitas.find(x=>x.id===id);
+      k.style = styleInput.value.trim();
+      k.proses = prosesInput.value.trim();
+      k.smv = lookupSmv(k.style, k.proses);
+      k.outputs = [...tr.querySelectorAll('.k-out')].map(inp=>inp.value===''?'':Number(inp.value));
+      k.synced = false;
+      const linkedAssign = assignments.find(a=>a.tanggal===k.tanggal && a.noAbsen===k.noAbsen && a.line===k.line);
+      if(linkedAssign){ linkedAssign.style = k.style; linkedAssign.proses = k.proses; linkedAssign.synced=false; }
+      const {rata} = computeRata(k.outputs);
+      const eff = (rata!==null && k.smv) ? (rata/k.smv*100) : null;
+      tr.querySelector('.k-smv').textContent = k.smv || '-';
+      tr.querySelector('.k-rata').textContent = rata!==null?rata:'-';
+      tr.querySelector('.k-eff').innerHTML = eff!==null?`<span class="eff-pill ${effClass(eff)}">${eff.toFixed(2)}%</span>`:'-';
+      storeSet('kap_kapasitas', kapasitas, true);
+      storeSet('kap_assignments', assignments, true);
+    }
+
+    styleInput.addEventListener('input', ()=>{ prosesDatalistFor(dlId, styleInput.value); recalcRow(); });
+    prosesInput.addEventListener('input', recalcRow);
+    tr.querySelectorAll('.k-out').forEach(inp=> inp.addEventListener('input', recalcRow));
+    tr.querySelector('.k-autofill').addEventListener('click', ()=>{
+      const outs = tr.querySelectorAll('.k-out');
+      const v = outs[0].value;
+      if(v===''){ return; }
+      for(let i=1;i<7;i++){ outs[i].value = v; }
+      recalcRow();
+    });
+  });
+}
+
+/* ad hoc add operator */
+function openAdhocModal(){
+  const date = document.getElementById('kapDate').value;
+  const line = document.getElementById('kapLine').value;
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.innerHTML = `
+    <div class="modal">
+      <h3>Tambah operator (${fmtDate(date)}, ${line})</h3>
+      <div class="field">
+        <label>Cari operator</label>
+        <input type="text" id="adhocOpSearch" list="adhocOpList" placeholder="Nama atau No. Absen">
+        <datalist id="adhocOpList"></datalist>
+      </div>
+      <div class="field"><label>Style</label><input type="text" id="adhocStyle" list="styleList"></div>
+      <div class="field"><label>Proses</label><input type="text" id="adhocProses" list="adhocProsesList"></div>
+      <div class="field">
+        <label>Durasi assignment</label>
+        <select id="adhocDurasi">
+          <option value="today">Hanya hari ini</option>
+          <option value="until">Sampai tanggal tertentu</option>
+          <option value="permanent">Permanen (mengikuti tab Assignment)</option>
+        </select>
+      </div>
+      <div class="field" id="adhocUntilWrap" style="display:none;"><label>Sampai tanggal</label><input type="date" id="adhocUntilDate"></div>
+      <div class="hint" id="adhocPermanentHint" style="display:none;">Catatan: "Permanen" akan mengisi assignment untuk 90 hari ke depan sebagai perkiraan praktis (assignment berbasis tanggal per baris, belum ada konsep pengulangan tanpa batas). Bisa diperpanjang lagi nanti.</div>
+      <div class="modal-actions">
+        <button class="secondary" id="adhocCancel">Batal</button>
+        <button id="adhocConfirm">Tambahkan</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('appRoot').appendChild(backdrop);
+
+  const dl = document.getElementById('adhocOpList');
+  const alreadyIds = new Set(assignments.filter(a=>a.tanggal===date && a.line===line).map(a=>a.noAbsen));
+  dl.innerHTML = dataOpt.filter(o=>!alreadyIds.has(o['NIP'])).map(o=>`<option value="${o['NAMA']} (${o['NIP']})">`).join('');
+
+  document.getElementById('adhocStyle').addEventListener('input', (e)=>{
+    let pdl = document.getElementById('adhocProsesList');
+    if(!pdl){ pdl = document.createElement('datalist'); pdl.id='adhocProsesList'; document.body.appendChild(pdl); }
+    pdl.innerHTML = prosesForStyle(e.target.value).map(p=>`<option value="${p}">`).join('');
+  });
+
+  document.getElementById('adhocDurasi').addEventListener('change', (e)=>{
+    document.getElementById('adhocUntilWrap').style.display = e.target.value==='until' ? 'block':'none';
+    document.getElementById('adhocPermanentHint').style.display = e.target.value==='permanent' ? 'block':'none';
+  });
+
+  document.getElementById('adhocCancel').addEventListener('click', ()=> backdrop.remove());
+
+  document.getElementById('adhocConfirm').addEventListener('click', ()=>{
+    const searchVal = document.getElementById('adhocOpSearch').value;
+    const match = searchVal.match(/\(([^)]+)\)\s*$/);
+    const nip = match ? match[1] : searchVal.trim();
+    const op = dataOpt.find(o=>o['NIP']===nip);
+    if(!op){ alert('Operator tidak ditemukan. Pilih dari daftar saran.'); return; }
+    const style = document.getElementById('adhocStyle').value.trim();
+    const proses = document.getElementById('adhocProses').value.trim();
+    if(!style || !proses){ alert('Style dan proses wajib diisi.'); return; }
+    const durasi = document.getElementById('adhocDurasi').value;
+
+    let dates = [date];
+    if(durasi==='until'){
+      const untilDate = document.getElementById('adhocUntilDate').value;
+      if(untilDate && untilDate > date){
+        dates = [];
+        let cur = new Date(date);
+        const end = new Date(untilDate);
+        while(cur<=end){ dates.push(cur.toISOString().slice(0,10)); cur.setDate(cur.getDate()+1); }
+      }
+    }else if(durasi==='permanent'){
+      dates = [];
+      let cur = new Date(date);
+      for(let i=0;i<90;i++){ dates.push(cur.toISOString().slice(0,10)); cur.setDate(cur.getDate()+1); }
+    }
+
+    dates.forEach(d=>{
+      const already = assignments.find(a=>a.tanggal===d && a.noAbsen===op['NIP'] && a.proses===proses);
+      if(!already){
+        assignments.push({ localId: uid(), tanggal:d, noAbsen:op['NIP'], nama:op['NAMA'], line, style, proses, synced:false });
+      }
+    });
+    storeSet('kap_assignments', assignments, true);
+    backdrop.remove();
+    renderKapasitasTable();
+  });
+}
+
+/* ---------- Import awal dari sheet lama ---------- */
+function openImportModal(){
+  const date = document.getElementById('assignDate').value;
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.innerHTML = `
+    <div class="modal" style="width:600px;">
+      <h3>Impor data awal untuk tanggal ${fmtDate(date)}</h3>
+      <div class="hint" style="margin-bottom:8px;">
+        Copy data dari sheet lama <b>termasuk baris header</b> (misal kolom NIP, NAMA, LINE BERJALAN, STYLE BERJALAN, PROSES BERJALAN — urutan kolom bebas, kolom lain akan diabaikan), lalu paste di bawah ini.
+      </div>
+      <textarea id="importTextarea" style="width:100%;height:220px;background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:12px;" placeholder="Paste data di sini..."></textarea>
+      <div class="hint" id="importPreviewMsg"></div>
+      <div class="modal-actions">
+        <button class="secondary" id="importCancel">Batal</button>
+        <button id="importConfirm">Impor</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('appRoot').appendChild(backdrop);
+  document.getElementById('importCancel').addEventListener('click', ()=> backdrop.remove());
+  document.getElementById('importConfirm').addEventListener('click', ()=>{
+    const raw = document.getElementById('importTextarea').value;
+    const result = parseAndImport(raw, date);
+    document.getElementById('importPreviewMsg').textContent = result.message;
+    if(result.count > 0){
+      storeSet('kap_assignments', assignments, true);
+      renderAssignmentTable();
+      setTimeout(()=> backdrop.remove(), 1200);
+    }
+  });
+}
+
+function normalizeHeader_(h){ return String(h||'').trim().toUpperCase(); }
+
+function parseAndImport(raw, date){
+  const lines = raw.split(/\r?\n/).filter(l=>l.trim()!=='');
+  if(lines.length < 2) return { count:0, message:'Data tidak terbaca. Pastikan menyertakan baris header dan minimal satu baris data.' };
+
+  const headerCells = lines[0].split('\t').map(normalizeHeader_);
+  const findCol = (...names) => {
+    for(const n of names){
+      const idx = headerCells.indexOf(n);
+      if(idx !== -1) return idx;
+    }
+    return -1;
+  };
+
+  const idxNip = findCol('NIP', 'NO. ABSEN');
+  const idxNama = findCol('NAMA');
+  const idxLine = findCol('LINE BERJALAN', 'LINE');
+  const idxStyle = findCol('STYLE BERJALAN', 'STYLE');
+  const idxProses = findCol('PROSES BERJALAN', 'PROSES');
+  const idxStatus = findCol('STATUS', 'STATUS MASA KERJA', 'AKTIF?');
+
+  if(idxNip === -1){
+    return { count:0, message:'Kolom NIP / No. Absen tidak ditemukan di header. Pastikan baris pertama adalah header kolom.' };
+  }
+
+  let count = 0, skippedInactive = 0, skippedEmpty = 0;
+  for(let i=1;i<lines.length;i++){
+    const cells = lines[i].split('\t');
+    const nip = (cells[idxNip]||'').trim();
+    if(!nip) continue;
+    if(idxStatus !== -1){
+      const status = normalizeHeader_(cells[idxStatus]);
+      if(status && status !== 'AKTIF'){ skippedInactive++; continue; }
+    }
+    const nama = idxNama!==-1 ? (cells[idxNama]||'').trim() : (dataOpt.find(o=>o['NIP']===nip)||{})['NAMA'] || '';
+    const line = idxLine!==-1 ? (cells[idxLine]||'').trim() : '';
+    const style = idxStyle!==-1 ? (cells[idxStyle]||'').trim() : '';
+    const proses = idxProses!==-1 ? (cells[idxProses]||'').trim() : '';
+
+    if(!line && !style && !proses){ skippedEmpty++; continue; }
+
+    const existing = assignments.find(a=>a.tanggal===date && a.noAbsen===nip && a.proses===proses);
+    if(existing){
+      existing.line = line; existing.style = style; existing.nama = nama; existing.synced=false;
+    }else{
+      assignments.push({ localId: uid(), tanggal: date, noAbsen: nip, nama, line, style, proses, synced:false });
+    }
+    count++;
+  }
+
+  let msg = `${count} baris berhasil diimpor.`;
+  if(skippedInactive) msg += ` ${skippedInactive} dilewati (tidak aktif).`;
+  if(skippedEmpty) msg += ` ${skippedEmpty} dilewati (line/style/proses semua kosong).`;
+  return { count, message: msg };
+}
+
+/* ---------- Tabs ---------- */
+document.querySelectorAll('nav button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.tab-content').forEach(t=>t.style.display='none');
+    document.getElementById('tab-'+btn.dataset.tab).style.display='block';
+    if(btn.dataset.tab==='assignment') renderAssignmentTable();
+    if(btn.dataset.tab==='kapasitas') renderKapasitasTable();
+  });
+});
+
+/* ---------- Init ---------- */
+document.getElementById('assignDate').value = todayStr();
+document.getElementById('kapDate').value = todayStr();
+document.getElementById('kapLine').innerHTML = LINES.map(l=>`<option value="${l}">${l}</option>`).join('');
+document.getElementById('assignLineFilter').innerHTML = '<option value="">Semua line</option>' + LINES.map(l=>`<option value="${l}">${l}</option>`).join('');
+
+document.getElementById('assignDate').addEventListener('change', renderAssignmentTable);
+document.getElementById('assignSearch').addEventListener('input', renderAssignmentTable);
+document.getElementById('assignLineFilter').addEventListener('change', renderAssignmentTable);
+document.getElementById('kapDate').addEventListener('change', renderKapasitasTable);
+document.getElementById('kapLine').addEventListener('change', renderKapasitasTable);
+document.getElementById('kapSearch').addEventListener('input', renderKapasitasTable);
+
+document.getElementById('toggleCopyPanelBtn').addEventListener('click', ()=>{
+  const panel = document.getElementById('copyPanel');
+  document.getElementById('copyFromDisplay').value = fmtDate(document.getElementById('assignDate').value);
+  panel.style.display = panel.style.display==='none' ? 'block':'none';
+});
+document.getElementById('openImportBtn').addEventListener('click', openImportModal);
+document.getElementById('applyCopyBtn').addEventListener('click', applyCopyRange);
+document.getElementById('fillLineBtn').addEventListener('click', ()=> fillColumnDown('.a-line'));
+document.getElementById('fillStyleBtn').addEventListener('click', ()=> fillColumnDown('.a-style'));
+document.getElementById('fillProsesBtn').addEventListener('click', ()=> fillColumnDown('.a-proses'));
+document.getElementById('addAdhocBtn').addEventListener('click', openAdhocModal);
+
+document.getElementById('saveUrlBtn').addEventListener('click', async ()=>{
+  config.gasUrl = document.getElementById('gasUrlInput').value.trim();
+  await storeSet('kap_config', config, true);
+  document.getElementById('settingsMsg').textContent = 'URL disimpan.';
+  await refreshReferenceData();
+  await pullExistingData();
+  renderAssignmentTable();
+  renderKapasitasTable();
+});
+document.getElementById('testConnBtn').addEventListener('click', testConnection);
+document.getElementById('refreshRefBtn').addEventListener('click', refreshReferenceData);
+document.getElementById('pullDataBtn').addEventListener('click', async ()=>{
+  await pullExistingData();
+  renderAssignmentTable();
+  renderKapasitasTable();
+  document.getElementById('settingsMsg').textContent = 'Data Assignment & Kapasitas dimuat ulang dari Sheets.';
+});
+document.getElementById('syncNowBtn').addEventListener('click', ()=>syncNow());
+document.getElementById('saveAssignBtn').addEventListener('click', ()=>syncNow('assignSaveMsg'));
+document.getElementById('saveKapBtn').addEventListener('click', ()=>syncNow('kapSaveMsg'));
+
+async function init(){
+  const savedConfig = await storeGet('kap_config', true);
+  if(savedConfig) config = savedConfig;
+  document.getElementById('gasUrlInput').value = config.gasUrl || '';
+
+  dataOpt = (await storeGet('kap_dataOpt', true)) || [];
+  dataSmv = (await storeGet('kap_dataSmv', true)) || [];
+  assignments = (await storeGet('kap_assignments', true)) || [];
+  kapasitas = (await storeGet('kap_kapasitas', true)) || [];
+
+  if(config.gasUrl){
+    await refreshReferenceData();
+    await pullExistingData();
+    syncNow();
+  }
+  renderAssignmentTable();
+  renderKapasitasTable();
+
+  setInterval(()=>{ if(config.gasUrl) syncNow(); }, 5*60*1000);
+}
+init();
+</script>
+</body>
+</html>
