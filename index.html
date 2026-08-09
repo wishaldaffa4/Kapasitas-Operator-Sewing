@@ -809,6 +809,28 @@ function parseAndImport(raw, date){
   return { count, message: msg };
 }
 
+/* ---------- Navigasi Enter: pindah ke baris di bawah, kolom sama ---------- */
+function enableEnterToMoveDown(tbodyEl){
+  tbodyEl.addEventListener('keydown', (e)=>{
+    if(e.key !== 'Enter') return;
+    const el = e.target;
+    if(!el.matches('input, select')) return;
+    e.preventDefault();
+    const tr = el.closest('tr');
+    if(!tr) return;
+    const td = el.closest('td');
+    const cellIndex = [...tr.children].indexOf(td);
+    const nextTr = tr.nextElementSibling;
+    if(!nextTr) return;
+    const nextTd = nextTr.children[cellIndex];
+    if(!nextTd) return;
+    const nextInput = nextTd.querySelector('input, select');
+    if(nextInput) nextInput.focus();
+  });
+}
+enableEnterToMoveDown(document.getElementById('assignBody'));
+enableEnterToMoveDown(document.getElementById('kapBody'));
+
 /* ---------- Tabs ---------- */
 document.querySelectorAll('nav button').forEach(btn=>{
   btn.addEventListener('click', ()=>{
