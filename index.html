@@ -659,6 +659,8 @@ function renderKapasitasTable(){
 
   if(search){ rows = rows.filter(r=>`${r.nama} ${r.noAbsen} ${r.proses}`.toLowerCase().includes(search)); }
 
+  rows = rows.slice().sort((a,b)=> (a.proses||'').localeCompare(b.proses||'', 'id') || (a.nama||'').localeCompare(b.nama||'', 'id'));
+
   if(rows.length===0){ tbody.innerHTML=''; empty.style.display='block'; return; }
   empty.style.display='none';
 
