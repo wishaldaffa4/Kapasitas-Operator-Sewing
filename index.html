@@ -207,8 +207,8 @@
             <tr>
               <th>No. Absen</th><th>Nama</th><th>Style</th><th>Proses</th><th>SMV</th>
               <th>Rata-rata</th><th>EFF</th>
-              <th>J1</th><th>J2</th><th>J3</th><th>J4</th><th>J5</th><th>J6</th><th>J7</th><th>J8</th><th>J9</th>
               <th></th>
+              <th>J1</th><th>J2</th><th>J3</th><th>J4</th><th>J5</th><th>J6</th><th>J7</th><th>J8</th><th>J9</th>
             </tr>
           </thead>
           <tbody id="kapBody"></tbody>
@@ -677,10 +677,10 @@ function renderKapasitasTable(){
         <td class="k-smv" data-label="SMV">${k.smv || '-'}</td>
         <td class="k-rata" data-label="Rata-rata">${rata!==null?rata:'-'}</td>
         <td class="k-eff" data-label="EFF">${eff!==null?`<span class="eff-pill ${effClass(eff)}">${eff.toFixed(2)}%</span>`:'-'}</td>
-        ${outputsCells}
-        <td data-label="">
+        <td data-label="Aksi cepat">
           <button class="secondary small k-autofill" title="Salin nilai Jam 1 ke Jam 2-7">Isi 1-7</button>
         </td>
+        ${outputsCells}
       </tr>
     `;
   }).join('');
