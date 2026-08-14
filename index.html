@@ -682,6 +682,7 @@ function renderKapasitasTable(){
         <td class="k-eff" data-label="EFF">${eff!==null?`<span class="eff-pill ${effClass(eff)}">${eff.toFixed(2)}%</span>`:'-'}</td>
         <td data-label="Aksi cepat">
           <button class="secondary small k-autofill" title="Salin nilai Jam 1 ke Jam 2-7">Isi 1-7</button>
+          <button class="danger small k-clearall" title="Hapus semua output jam untuk operator ini" style="margin-left:4px;">Hapus semua</button>
         </td>
         ${outputsCells}
       </tr>
@@ -721,6 +722,11 @@ function renderKapasitasTable(){
       const v = outs[0].value;
       if(v===''){ return; }
       for(let i=1;i<7;i++){ outs[i].value = v; }
+      recalcRow();
+    });
+    tr.querySelector('.k-clearall').addEventListener('click', ()=>{
+      if(!confirm('Hapus semua output jam untuk operator ini?')) return;
+      tr.querySelectorAll('.k-out').forEach(inp=> inp.value = '');
       recalcRow();
     });
   });
