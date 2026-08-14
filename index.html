@@ -293,10 +293,10 @@ async function refreshReferenceData(){
   if(!config.gasUrl) return;
   try{
     setSyncStatus('busy','Mengambil data referensi...');
-    dataOpt = await gasGet('getDataOpt');
-    dataSmv = await gasGet('getSMV');
-    await storeSet('kap_dataOpt', dataOpt, true);
-    await storeSet('kap_dataSmv', dataSmv, true);
+    const [opt, smv] = await Promise.all([ gasGet('getDataOpt'), gasGet('getSMV') ]);
+    dataOpt = opt; dataSmv = smv;
+    storeSet('kap_dataOpt', dataOpt, true);
+    storeSet('kap_dataSmv', dataSmv, true);
     lastRefTime = new Date();
     document.getElementById('lastRefTime').textContent = lastRefTime.toLocaleTimeString('id-ID');
     setSyncStatus('ok','Tersambung');
@@ -310,8 +310,7 @@ async function refreshReferenceData(){
 async function pullExistingData(){
   if(!config.gasUrl) return;
   try{
-    const remoteAssign = await gasGet('getAssignment');
-    const remoteKap = await gasGet('getKapasitas');
+    const [remoteAssign, remoteKap] = await Promise.all([ gasGet('getAssignment'), gasGet('getKapasitas') ]);
     assignments = remoteAssign.map(r => ({
       localId: uid(),
       tanggal: normalizeDate_(r['TANGGAL']),
@@ -334,8 +333,8 @@ async function pullExistingData(){
       outputs: [1,2,3,4,5,6,7,8,9].map(i => r['OUTPUT JAM '+i] === '' || r['OUTPUT JAM '+i]===undefined ? '' : Number(r['OUTPUT JAM '+i])),
       synced: true
     }));
-    await storeSet('kap_assignments', assignments, true);
-    await storeSet('kap_kapasitas', kapasitas, true);
+    storeSet('kap_assignments', assignments, true);
+    storeSet('kap_kapasitas', kapasitas, true);
   }catch(e){
     console.error(e);
   }
@@ -1133,8 +1132,7 @@ document.getElementById('saveUrlBtn').addEventListener('click', async ()=>{
   config.gasUrl = document.getElementById('gasUrlInput').value.trim();
   await storeSet('kap_config', config, true);
   document.getElementById('settingsMsg').textContent = 'URL disimpan.';
-  await refreshReferenceData();
-  await pullExistingData();
+  await Promise.all([ refreshReferenceData(), pullExistingData() ]);
   renderAssignmentTable();
   renderKapasitasTable();
 });
@@ -1160,13 +1158,14 @@ async function init(){
   assignments = (await storeGet('kap_assignments', true)) || [];
   kapasitas = (await storeGet('kap_kapasitas', true)) || [];
 
-  if(config.gasUrl){
-    await refreshReferenceData();
-    await pullExistingData();
-    syncNow();
-  }
   renderAssignmentTable();
   renderKapasitasTable();
+
+  if(config.gasUrl){
+    await Promise.all([ refreshReferenceData(), pullExistingData() ]);
+    renderAssignmentTable();
+    renderKapasitasTable();
+  }
 
   setInterval(()=>{ if(config.gasUrl) syncNow(); }, 5*60*1000);
 }
