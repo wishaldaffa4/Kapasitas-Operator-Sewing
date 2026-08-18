@@ -934,15 +934,51 @@ enableEnterToMoveDown(document.getElementById('assignBody'));
 enableEnterToMoveDown(document.getElementById('kapBody'));
 
 /* ---------- Tabs ---------- */
+function switchTab(tabName){
+  document.querySelectorAll('#sidebarNav button').forEach(b=>b.classList.toggle('active', b.dataset.tab===tabName));
+  document.querySelectorAll('.tab-content').forEach(t=>t.style.display='none');
+  document.getElementById('tab-'+tabName).style.display='block';
+  if(tabName==='assignment') renderAssignmentTable();
+  if(tabName==='kapasitas') renderKapasitasTable();
+  saveUiState();
+}
 document.querySelectorAll('#sidebarNav button').forEach(btn=>{
-  btn.addEventListener('click', ()=>{
-    document.querySelectorAll('#sidebarNav button').forEach(b=>b.classList.remove('active'));
-    btn.classList.add('active');
-    document.querySelectorAll('.tab-content').forEach(t=>t.style.display='none');
-    document.getElementById('tab-'+btn.dataset.tab).style.display='block';
-    if(btn.dataset.tab==='assignment') renderAssignmentTable();
-    if(btn.dataset.tab==='kapasitas') renderKapasitasTable();
-  });
+  btn.addEventListener('click', ()=> switchTab(btn.dataset.tab));
+});
+
+/* ---------- Persist tampilan terakhir (tab, tanggal, line, pencarian) ---------- */
+function getActiveTab(){
+  const activeBtn = document.querySelector('#sidebarNav button.active');
+  return activeBtn ? activeBtn.dataset.tab : 'kapasitas';
+}
+function saveUiState(){
+  const state = {
+    activeTab: getActiveTab(),
+    assignDate: document.getElementById('assignDate').value,
+    assignLineFilter: document.getElementById('assignLineFilter').value,
+    assignSearch: document.getElementById('assignSearch').value,
+    kapDate: document.getElementById('kapDate').value,
+    kapLine: document.getElementById('kapLine').value,
+    kapSearch: document.getElementById('kapSearch').value
+  };
+  storeSet('kap_uistate', state, false);
+}
+async function loadUiState(){
+  return await storeGet('kap_uistate', false);
+}
+function applyUiStateValues(state){
+  if(!state) return;
+  if(state.assignDate) document.getElementById('assignDate').value = state.assignDate;
+  if(state.assignLineFilter) document.getElementById('assignLineFilter').value = state.assignLineFilter;
+  if(state.assignSearch) document.getElementById('assignSearch').value = state.assignSearch;
+  if(state.kapDate) document.getElementById('kapDate').value = state.kapDate;
+  if(state.kapLine) document.getElementById('kapLine').value = state.kapLine;
+  if(state.kapSearch) document.getElementById('kapSearch').value = state.kapSearch;
+}
+['assignDate','assignLineFilter','assignSearch','kapDate','kapLine','kapSearch'].forEach(id=>{
+  const el = document.getElementById(id);
+  el.addEventListener('change', saveUiState);
+  el.addEventListener('input', saveUiState);
 });
 
 /* ---------- Validasi sebelum simpan Kapasitas ---------- */
@@ -1165,8 +1201,12 @@ async function init(){
   assignments = (await storeGet('kap_assignments', true)) || [];
   kapasitas = (await storeGet('kap_kapasitas', true)) || [];
 
+  const uiState = await loadUiState();
+  applyUiStateValues(uiState);
+
   renderAssignmentTable();
   renderKapasitasTable();
+  switchTab(uiState && uiState.activeTab ? uiState.activeTab : 'kapasitas');
 
   if(config.gasUrl){
     await Promise.all([ refreshReferenceData(), pullExistingData() ]);
