@@ -681,7 +681,7 @@ function renderKapasitasTable(){
         <td class="k-rata" data-label="Rata-rata">${rata!==null?rata:'-'}</td>
         <td class="k-eff" data-label="EFF">${eff!==null?`<span class="eff-pill ${effClass(eff)}">${eff.toFixed(2)}%</span>`:'-'}</td>
         <td data-label="Aksi cepat">
-          <button class="secondary small k-autofill" title="Salin nilai Jam 1 ke Jam 2-7">Isi 1-7</button>
+          <button class="secondary small k-autofill" title="Ambil nilai dari kotak Jam 1-7 yang sudah terisi, isikan ke sisanya yang masih kosong">Isi 1-7</button>
           <button class="danger small k-clearall" title="Hapus semua output jam untuk operator ini" style="margin-left:4px;">Hapus semua</button>
         </td>
         ${outputsCells}
@@ -719,9 +719,14 @@ function renderKapasitasTable(){
     tr.querySelectorAll('.k-out').forEach(inp=> inp.addEventListener('input', recalcRow));
     tr.querySelector('.k-autofill').addEventListener('click', ()=>{
       const outs = tr.querySelectorAll('.k-out');
-      const v = outs[0].value;
-      if(v===''){ return; }
-      for(let i=1;i<7;i++){ outs[i].value = v; }
+      let sourceVal = null;
+      for(let i=0;i<7;i++){
+        if(outs[i].value !== ''){ sourceVal = outs[i].value; break; }
+      }
+      if(sourceVal === null) return;
+      for(let i=0;i<7;i++){
+        if(outs[i].value === ''){ outs[i].value = sourceVal; }
+      }
       recalcRow();
     });
     tr.querySelector('.k-clearall').addEventListener('click', ()=>{
