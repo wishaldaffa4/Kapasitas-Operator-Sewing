@@ -362,8 +362,14 @@ async function syncNow(evtOrMsgElId){
 
     const kapRows = kapasitas.map(k => {
       const {rata} = computeRata(k.outputs);
+      const effPercent = (rata!==null && k.smv) ? (rata/k.smv*100) : null;
       const effDecimal = (rata!==null && k.smv) ? (rata/k.smv) : '';
-      const row = { 'ID': k.id, 'TANGGAL': k.tanggal, 'LINE': k.line, 'NO. ABSEN': k.noAbsen, 'NAMA': k.nama, 'STYLE': k.style, 'PROSES': k.proses, 'SMV': k.smv, 'TOTAL': (k.outputs||[]).filter(v=>v!=='' && v!=null).reduce((a,b)=>a+Number(b),0), 'RATA-RATA': rata!==null?rata:'', 'EFF': effDecimal };
+      const row = { 'ID': k.id, 'TANGGAL': k.tanggal, 'LINE': k.line, 'NO. ABSEN': k.noAbsen, 'NAMA': k.nama, 'STYLE': k.style, 'PROSES': k.proses, 'SMV': k.smv, 'TOTAL': (k.outputs||[]).filter(v=>v!=='' && v!=null).reduce((a,b)=>a+Number(b),0), 'RATA-RATA': rata!==null?rata:'', 'EFF': effDecimal,
+        'SISA WAKTU PENETAPAN (BULAN)': sisaWaktuPenetapan(k.noAbsen),
+        'MASA KERJA': masaKerjaDisplay(k.noAbsen),
+        'KATEGORI EFISIENSI': kategoriEfisiensi(effPercent),
+        'LEVEL SKILL': lookupLevelSkill(k.style, k.proses)
+      };
       k.outputs.forEach((v,i)=>{ row['OUTPUT JAM '+(i+1)] = v; });
       return row;
     });
@@ -392,9 +398,37 @@ function computeRata(outputs){
 }
 function effClass(eff){
   if(eff===null) return '';
-  if(eff>=70) return 'eff-good';
-  if(eff>=50) return 'eff-warn';
-  return 'eff-bad';
+  if(eff>=90) return 'eff-good';   // Mahir & Sangat Mahir -> hijau
+  if(eff>=80) return 'eff-warn';   // Cukup Mahir -> kuning
+  return 'eff-bad';                // Belajar & Bisa -> merah
+}
+function kategoriEfisiensi(eff){
+  if(eff===null) return '';
+  if(eff<80) return 'Belajar';
+  if(eff<90) return 'Bisa';
+  if(eff<100) return 'Cukup Mahir';
+  if(eff<110) return 'Mahir';
+  return 'Sangat Mahir';
+}
+function getOperatorInfo(noAbsen){
+  return dataOpt.find(o=>o['NIP']===noAbsen) || null;
+}
+function masaKerjaDisplay(noAbsen){
+  const op = getOperatorInfo(noAbsen);
+  if(!op) return '';
+  const raw = op['MASA KERJA (TAHUN)'];
+  const n = Number(raw);
+  if(isNaN(n)) return raw || '';
+  return n>=5 ? 'TETAP' : n;
+}
+function sisaWaktuPenetapan(noAbsen){
+  const op = getOperatorInfo(noAbsen);
+  if(!op) return '';
+  return op['SISA WAKTU PENETAPAN (BULAN)'] !== undefined ? op['SISA WAKTU PENETAPAN (BULAN)'] : '';
+}
+function lookupLevelSkill(style, proses){
+  const found = dataSmv.find(r => (r['STYLE']||'').trim().toUpperCase() === (style||'').trim().toUpperCase() && (r['PROSES']||'').trim().toUpperCase() === (proses||'').trim().toUpperCase());
+  return found ? (found['LEVEL SKILL'] !== undefined ? found['LEVEL SKILL'] : '') : '';
 }
 function lookupSmv(style, proses){
   const found = dataSmv.find(r => (r['STYLE']||'').trim().toUpperCase() === (style||'').trim().toUpperCase() && (r['PROSES']||'').trim().toUpperCase() === (proses||'').trim().toUpperCase());
@@ -679,7 +713,7 @@ function renderKapasitasTable(){
         <td data-label="Proses"><input class="proses-input k-proses" list="${prosesDlId}" value="${k.proses}"></td>
         <td class="k-smv" data-label="SMV">${k.smv || '-'}</td>
         <td class="k-rata" data-label="Rata-rata">${rata!==null?rata:'-'}</td>
-        <td class="k-eff" data-label="EFF">${eff!==null?`<span class="eff-pill ${effClass(eff)}">${eff.toFixed(2)}%</span>`:'-'}</td>
+        <td class="k-eff" data-label="EFF">${eff!==null?`<span class="eff-pill ${effClass(eff)}" title="${kategoriEfisiensi(eff)}">${eff.toFixed(2)}% (${kategoriEfisiensi(eff)})</span>`:'-'}</td>
         <td data-label="Aksi cepat">
           <button class="secondary small k-autofill" title="Ambil nilai dari kotak Jam 1-7 yang sudah terisi, isikan ke sisanya yang masih kosong">Isi 1-7</button>
           <button class="danger small k-clearall" title="Hapus semua output jam untuk operator ini" style="margin-left:4px;">Hapus semua</button>
@@ -709,7 +743,7 @@ function renderKapasitasTable(){
       const eff = (rata!==null && k.smv) ? (rata/k.smv*100) : null;
       tr.querySelector('.k-smv').textContent = k.smv || '-';
       tr.querySelector('.k-rata').textContent = rata!==null?rata:'-';
-      tr.querySelector('.k-eff').innerHTML = eff!==null?`<span class="eff-pill ${effClass(eff)}">${eff.toFixed(2)}%</span>`:'-';
+      tr.querySelector('.k-eff').innerHTML = eff!==null?`<span class="eff-pill ${effClass(eff)}" title="${kategoriEfisiensi(eff)}">${eff.toFixed(2)}% (${kategoriEfisiensi(eff)})</span>`:'-';
       storeSet('kap_kapasitas', kapasitas, true);
       storeSet('kap_assignments', assignments, true);
     }
