@@ -45,6 +45,8 @@
   .style-input{width:260px;}
   .proses-input{width:200px;}
   .col-nama{width:150px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .proses-invalid{border-color:var(--bad) !important;background:rgba(224,85,78,.08);}
+  .proses-warn-icon{color:var(--bad);font-size:12px;margin-left:4px;cursor:help;}
   .eff-pill{display:inline-block;padding:2px 8px;border-radius:20px;font-weight:600;font-size:11.5px;}
   .eff-good{background:rgba(62,207,142,.15);color:var(--good);}
   .eff-warn{background:rgba(224,167,46,.15);color:var(--warn);}
@@ -506,7 +508,7 @@ function renderAssignmentTable(){
           </select>
         </td>
         <td data-label="Style"><input class="style-input a-style" list="styleList" value="${r.style||''}" placeholder="Cari style..."></td>
-        <td data-label="Proses"><input class="proses-input a-proses" list="${prosesDlId}" value="${r.proses||''}" placeholder="Cari proses..."></td>
+        <td data-label="Proses"><input class="proses-input a-proses" list="${prosesDlId}" value="${r.proses||''}" placeholder="Cari proses..."><span class="proses-warn-icon" style="display:none;" title="Proses ini tidak ditemukan di Data SMV untuk Style yang dipilih">⚠</span></td>
         <td data-label="">
           <button class="secondary small a-addrow" title="Tambah proses lain untuk operator ini">+ Proses</button>
           ${r.localId ? '<button class="danger small a-remove" style="margin-left:4px;">Hapus</button>' : ''}
@@ -519,10 +521,27 @@ function renderAssignmentTable(){
   tbody.querySelectorAll('tr').forEach((tr,idx)=>{
     const styleInput = tr.querySelector('.a-style');
     const prosesInput = tr.querySelector('.a-proses');
+    const warnIcon = tr.querySelector('.proses-warn-icon');
     const dlId = 'proses_assign_'+idx;
     prosesDatalistFor(dlId, styleInput.value);
-    styleInput.addEventListener('input', ()=>{ prosesDatalistFor(dlId, styleInput.value); saveAssignmentRow(tr); });
-    prosesInput.addEventListener('input', ()=> saveAssignmentRow(tr));
+
+    function validateProses(){
+      const style = styleInput.value.trim();
+      const proses = prosesInput.value.trim();
+      if(!style || !proses){
+        prosesInput.classList.remove('proses-invalid');
+        warnIcon.style.display = 'none';
+        return;
+      }
+      const validList = prosesForStyle(style).map(p=>p.trim().toUpperCase());
+      const isValid = validList.includes(proses.toUpperCase());
+      prosesInput.classList.toggle('proses-invalid', !isValid);
+      warnIcon.style.display = isValid ? 'none' : 'inline';
+    }
+    validateProses();
+
+    styleInput.addEventListener('input', ()=>{ prosesDatalistFor(dlId, styleInput.value); saveAssignmentRow(tr); validateProses(); });
+    prosesInput.addEventListener('input', ()=>{ saveAssignmentRow(tr); validateProses(); });
     tr.querySelector('.a-line').addEventListener('change', ()=> saveAssignmentRow(tr));
     styleInput.addEventListener('paste', (e)=> handleColumnPaste(e, '.a-style'));
     prosesInput.addEventListener('paste', (e)=> handleColumnPaste(e, '.a-proses'));
