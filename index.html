@@ -159,9 +159,16 @@
           <div class="row" style="margin-bottom:0;">
             <div class="field"><label>Dari tanggal (sudah dipilih di atas)</label><input type="text" id="copyFromDisplay" disabled></div>
             <div class="field"><label>Sampai tanggal</label><input type="date" id="copyToDate"></div>
+            <div class="field">
+              <label>Cakupan line</label>
+              <select id="copyLineScope">
+                <option value="all">Semua line</option>
+                <option value="active">Line yang sedang aktif di filter saja</option>
+              </select>
+            </div>
             <div class="field"><label>&nbsp;</label><button id="applyCopyBtn">Terapkan salinan</button></div>
           </div>
-          <div class="hint">Menyalin semua assignment terisi pada tanggal di atas ke setiap tanggal dalam rentang tersebut (menimpa yang sudah ada di tanggal tujuan bila kunci sama).</div>
+          <div class="hint" id="copyLineScopeHint">Menyalin semua assignment terisi pada tanggal di atas ke setiap tanggal dalam rentang tersebut (menimpa yang sudah ada di tanggal tujuan bila kunci sama).</div>
         </div>
       </div>
     </div>
@@ -649,8 +656,17 @@ function removeAssignmentRow(tr){
 function applyCopyRange(){
   const fromDate = document.getElementById('assignDate').value;
   const toDate = document.getElementById('copyToDate').value;
+  const scope = document.getElementById('copyLineScope').value;
+  const activeLine = document.getElementById('assignLineFilter').value;
   if(!fromDate || !toDate) return;
-  const source = assignments.filter(a=>a.tanggal===fromDate && a.style && a.proses);
+  if(scope==='active' && !activeLine){
+    alert('Pilih dulu Line di filter (atas tabel) sebelum menyalin hanya untuk line aktif.');
+    return;
+  }
+  let source = assignments.filter(a=>a.tanggal===fromDate && a.style && a.proses);
+  if(scope==='active'){
+    source = source.filter(a=>a.line===activeLine);
+  }
   if(source.length===0) return;
   let cur = new Date(fromDate);
   cur.setDate(cur.getDate()+1);
@@ -1201,7 +1217,21 @@ document.getElementById('kapSearch').addEventListener('input', renderKapasitasTa
 document.getElementById('toggleCopyPanelBtn').addEventListener('click', ()=>{
   const panel = document.getElementById('copyPanel');
   document.getElementById('copyFromDisplay').value = fmtDate(document.getElementById('assignDate').value);
+  const activeLine = document.getElementById('assignLineFilter').value;
+  const scopeSelect = document.getElementById('copyLineScope');
+  scopeSelect.options[1].text = activeLine ? `Line ${activeLine} saja (sesuai filter aktif)` : 'Line aktif saja (pilih Line di filter dulu)';
   panel.style.display = panel.style.display==='none' ? 'block':'none';
+});
+document.getElementById('copyLineScope').addEventListener('change', (e)=>{
+  const activeLine = document.getElementById('assignLineFilter').value;
+  const hint = document.getElementById('copyLineScopeHint');
+  if(e.target.value==='active'){
+    hint.textContent = activeLine
+      ? `Hanya menyalin assignment pada Line ${activeLine} dari tanggal di atas ke setiap tanggal dalam rentang tersebut.`
+      : 'Pilih dulu Line di kotak filter (atas tabel) supaya cakupan ini bisa dipakai.';
+  }else{
+    hint.textContent = 'Menyalin semua assignment terisi (semua line) pada tanggal di atas ke setiap tanggal dalam rentang tersebut (menimpa yang sudah ada di tanggal tujuan bila kunci sama).';
+  }
 });
 document.getElementById('openImportBtn').addEventListener('click', openImportModal);
 document.getElementById('applyCopyBtn').addEventListener('click', applyCopyRange);
