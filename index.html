@@ -153,6 +153,7 @@
           <div class="field" style="flex:1;min-width:200px;"><label>Cari</label><input type="text" id="assignSearch" placeholder="Cari nama / no. absen / proses" style="width:100%;"></div>
           <div class="field"><label>&nbsp;</label><button class="secondary" id="toggleCopyPanelBtn">Salin ke tanggal lain</button></div>
           <div class="field"><label>&nbsp;</label><button class="secondary" id="openImportBtn">Impor data awal</button></div>
+          <div class="field"><label>&nbsp;</label><button class="danger" id="openBulkDeleteBtn" style="border:1px solid var(--bad);">Hapus massal</button></div>
           <div class="field"><label>&nbsp;</label><button id="saveAssignBtn">💾 Simpan &amp; cetak ke Sheets</button></div>
           <span class="hint" id="assignSaveMsg"></span>
         </div>
@@ -512,6 +513,7 @@ function renderAssignmentTable(){
         <td data-label="">
           <button class="secondary small a-addrow" title="Tambah proses lain untuk operator ini">+ Proses</button>
           ${r.localId ? '<button class="danger small a-remove" style="margin-left:4px;">Hapus</button>' : ''}
+          ${r.localId ? '<button class="danger small a-remove-range" style="margin-left:4px;" title="Hapus assignment operator ini (proses yang sama) dari tanggal ini sampai tanggal pilihan">Hapus s/d...</button>' : ''}
         </td>
       </tr>
     `;
@@ -547,6 +549,8 @@ function renderAssignmentTable(){
     prosesInput.addEventListener('paste', (e)=> handleColumnPaste(e, '.a-proses'));
     const removeBtn = tr.querySelector('.a-remove');
     if(removeBtn) removeBtn.addEventListener('click', ()=> removeAssignmentRow(tr));
+    const removeRangeBtn = tr.querySelector('.a-remove-range');
+    if(removeRangeBtn) removeRangeBtn.addEventListener('click', ()=> openDeleteRangeModal(tr));
     tr.querySelector('.a-addrow').addEventListener('click', ()=>{
       const noAbsen = tr.getAttribute('data-noabsen');
       const nama = tr.getAttribute('data-nama');
@@ -554,6 +558,63 @@ function renderAssignmentTable(){
       storeSet('kap_assignments', assignments, true);
       renderAssignmentTable();
     });
+  });
+}
+
+function openDeleteRangeModal(tr){
+  const rid = tr.getAttribute('data-rid');
+  const target = assignments.find(a=>a.localId===rid);
+  if(!target){ alert('Baris ini belum tersimpan, tidak ada yang perlu dihapus dalam rentang.'); return; }
+  const fromDate = target.tanggal;
+  const noAbsen = target.noAbsen;
+  const nama = target.nama;
+  const proses = target.proses;
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.innerHTML = `
+    <div class="modal">
+      <h3>Hapus assignment berulang</h3>
+      <div class="hint" style="margin-bottom:10px;">
+        Operator: <b>${nama}</b> (${noAbsen})<br>
+        Proses: <b>${proses || '-'}</b><br>
+        Dari tanggal: <b>${fmtDate(fromDate)}</b>
+      </div>
+      <div class="field">
+        <label>Sampai tanggal</label>
+        <input type="date" id="deleteRangeUntil" style="width:100%;" min="${fromDate}">
+      </div>
+      <div class="hint" style="margin-top:8px;">Semua assignment operator ini dengan proses yang sama, dari tanggal di atas sampai tanggal yang dipilih, akan dihapus (termasuk yang sudah tercetak di Sheets).</div>
+      <div class="modal-actions">
+        <button class="secondary" id="deleteRangeCancel">Batal</button>
+        <button class="danger" id="deleteRangeConfirm" style="background:var(--bad);color:#fff;">Hapus rentang ini</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('appRoot').appendChild(backdrop);
+
+  document.getElementById('deleteRangeCancel').addEventListener('click', ()=> backdrop.remove());
+  document.getElementById('deleteRangeConfirm').addEventListener('click', ()=>{
+    const untilDate = document.getElementById('deleteRangeUntil').value;
+    if(!untilDate || untilDate < fromDate){
+      alert('Pilih tanggal akhir yang valid (sama atau setelah tanggal awal).');
+      return;
+    }
+    if(!confirm(`Yakin hapus assignment ${nama} - ${proses} dari ${fmtDate(fromDate)} sampai ${fmtDate(untilDate)}?`)) return;
+
+    const toDelete = assignments.filter(a=>
+      a.noAbsen===noAbsen && a.proses===proses && a.tanggal>=fromDate && a.tanggal<=untilDate
+    );
+    toDelete.forEach(a=>{
+      if(a.synced){ pendingDeleteAssign.push({ 'TANGGAL': a.tanggal, 'NO. ABSEN': a.noAbsen, 'PROSES': a.proses }); }
+    });
+    const deleteIds = new Set(toDelete.map(a=>a.localId));
+    assignments = assignments.filter(a=>!deleteIds.has(a.localId));
+
+    storeSet('kap_assignments', assignments, true);
+    backdrop.remove();
+    renderAssignmentTable();
+    syncNow('assignSaveMsg');
   });
 }
 
@@ -1007,6 +1068,96 @@ function enableEnterToMoveDown(tbodyEl){
 enableEnterToMoveDown(document.getElementById('assignBody'));
 enableEnterToMoveDown(document.getElementById('kapBody'));
 
+/* ---------- Hapus massal ---------- */
+function openBulkDeleteModal(){
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.innerHTML = `
+    <div class="modal" style="width:560px;">
+      <h3>Hapus assignment massal</h3>
+      <div class="field" style="margin-bottom:10px;">
+        <label>Line</label>
+        <select id="bulkDelLine" style="width:100%;">
+          <option value="">Semua line</option>
+          ${LINES.map(l=>`<option value="${l}">${l}</option>`).join('')}
+        </select>
+      </div>
+      <div class="row" style="margin-bottom:10px;">
+        <div class="field"><label>Dari tanggal</label><input type="date" id="bulkDelFrom" style="width:100%;"></div>
+        <div class="field"><label>Sampai tanggal</label><input type="date" id="bulkDelTo" style="width:100%;"></div>
+      </div>
+      <div class="field" style="margin-bottom:10px;">
+        <label>Cari (opsional, kosongkan untuk semua)</label>
+        <input type="text" id="bulkDelSearch" placeholder="Nama / No. Absen / Proses" style="width:100%;">
+      </div>
+      <button class="secondary" id="bulkDelPreviewBtn" style="width:100%;">Tampilkan preview</button>
+      <div id="bulkDelPreviewArea" style="margin-top:12px;"></div>
+      <div class="modal-actions">
+        <button class="secondary" id="bulkDelCancel">Batal</button>
+        <button class="danger" id="bulkDelConfirm" style="background:var(--bad);color:#fff;display:none;">Hapus sekarang</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('appRoot').appendChild(backdrop);
+
+  let matched = [];
+
+  function computeMatched(){
+    const line = document.getElementById('bulkDelLine').value;
+    const from = document.getElementById('bulkDelFrom').value;
+    const to = document.getElementById('bulkDelTo').value;
+    const search = document.getElementById('bulkDelSearch').value.trim().toLowerCase();
+    if(!from || !to) return null;
+    return assignments.filter(a=>{
+      if(a.tanggal < from || a.tanggal > to) return false;
+      if(line && a.line !== line) return false;
+      if(search && !`${a.nama} ${a.noAbsen} ${a.proses}`.toLowerCase().includes(search)) return false;
+      return true;
+    });
+  }
+
+  document.getElementById('bulkDelPreviewBtn').addEventListener('click', ()=>{
+    matched = computeMatched();
+    const area = document.getElementById('bulkDelPreviewArea');
+    const confirmBtn = document.getElementById('bulkDelConfirm');
+    if(matched === null){
+      area.innerHTML = `<div class="hint">Isi dulu Dari tanggal dan Sampai tanggal.</div>`;
+      confirmBtn.style.display = 'none';
+      return;
+    }
+    if(matched.length === 0){
+      area.innerHTML = `<div class="hint">Tidak ada assignment yang cocok dengan filter ini.</div>`;
+      confirmBtn.style.display = 'none';
+      return;
+    }
+    const preview = matched.slice(0,8).map(a=>`${fmtDate(a.tanggal)} — ${a.nama} (${a.noAbsen}) — ${a.line||'-'} — ${a.proses||'-'}`).join('<br>');
+    const more = matched.length > 8 ? `<br>...dan ${matched.length-8} baris lainnya` : '';
+    area.innerHTML = `
+      <div style="background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:12px;max-height:200px;overflow-y:auto;">${preview}${more}</div>
+      <div class="hint" style="margin-top:8px;color:var(--bad);font-weight:600;">Akan menghapus ${matched.length} baris assignment.</div>
+    `;
+    confirmBtn.style.display = 'inline-block';
+    confirmBtn.textContent = `Hapus ${matched.length} baris`;
+  });
+
+  document.getElementById('bulkDelCancel').addEventListener('click', ()=> backdrop.remove());
+  document.getElementById('bulkDelConfirm').addEventListener('click', ()=>{
+    if(!matched || matched.length===0) return;
+    if(!confirm(`Yakin hapus ${matched.length} baris assignment ini? Tindakan ini akan tersinkron ke Sheets juga.`)) return;
+
+    matched.forEach(a=>{
+      if(a.synced){ pendingDeleteAssign.push({ 'TANGGAL': a.tanggal, 'NO. ABSEN': a.noAbsen, 'PROSES': a.proses }); }
+    });
+    const deleteIds = new Set(matched.map(a=>a.localId));
+    assignments = assignments.filter(a=>!deleteIds.has(a.localId));
+
+    storeSet('kap_assignments', assignments, true);
+    backdrop.remove();
+    renderAssignmentTable();
+    syncNow('assignSaveMsg');
+  });
+}
+
 /* ---------- Tabs ---------- */
 function switchTab(tabName){
   document.querySelectorAll('#sidebarNav button').forEach(b=>b.classList.toggle('active', b.dataset.tab===tabName));
@@ -1253,6 +1404,7 @@ document.getElementById('copyLineScope').addEventListener('change', (e)=>{
   }
 });
 document.getElementById('openImportBtn').addEventListener('click', openImportModal);
+document.getElementById('openBulkDeleteBtn').addEventListener('click', openBulkDeleteModal);
 document.getElementById('applyCopyBtn').addEventListener('click', applyCopyRange);
 document.getElementById('fillLineBtn').addEventListener('click', ()=> fillColumnDown('.a-line'));
 document.getElementById('fillStyleBtn').addEventListener('click', ()=> fillColumnDown('.a-style'));
