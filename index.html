@@ -1184,7 +1184,8 @@ function saveUiState(){
     assignSearch: document.getElementById('assignSearch').value,
     kapDate: document.getElementById('kapDate').value,
     kapLine: document.getElementById('kapLine').value,
-    kapSearch: document.getElementById('kapSearch').value
+    kapSearch: document.getElementById('kapSearch').value,
+    savedOnDate: todayStr()
   };
   storeSet('kap_uistate', state, false);
 }
@@ -1193,12 +1194,18 @@ async function loadUiState(){
 }
 function applyUiStateValues(state){
   if(!state) return;
-  if(state.assignDate) document.getElementById('assignDate').value = state.assignDate;
+  const isNewDay = state.savedOnDate && state.savedOnDate !== todayStr();
   if(state.assignLineFilter) document.getElementById('assignLineFilter').value = state.assignLineFilter;
   if(state.assignSearch) document.getElementById('assignSearch').value = state.assignSearch;
-  if(state.kapDate) document.getElementById('kapDate').value = state.kapDate;
   if(state.kapLine) document.getElementById('kapLine').value = state.kapLine;
   if(state.kapSearch) document.getElementById('kapSearch').value = state.kapSearch;
+  if(isNewDay){
+    document.getElementById('assignDate').value = todayStr();
+    document.getElementById('kapDate').value = todayStr();
+  }else{
+    if(state.assignDate) document.getElementById('assignDate').value = state.assignDate;
+    if(state.kapDate) document.getElementById('kapDate').value = state.kapDate;
+  }
 }
 ['assignDate','assignLineFilter','assignSearch','kapDate','kapLine','kapSearch'].forEach(id=>{
   const el = document.getElementById(id);
