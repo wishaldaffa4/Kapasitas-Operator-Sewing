@@ -47,6 +47,7 @@
   .col-nama{width:150px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .proses-invalid{border-color:var(--bad) !important;background:rgba(224,85,78,.08);}
   .proses-warn-icon{color:var(--bad);font-size:12px;margin-left:4px;cursor:help;}
+  .sticky-toolbar{position:sticky;top:0;z-index:30;background:var(--bg);padding-top:6px;margin-top:-6px;box-shadow:0 6px 10px -6px rgba(0,0,0,.4);}
   .eff-pill{display:inline-block;padding:2px 8px;border-radius:20px;font-weight:600;font-size:11.5px;}
   .eff-good{background:rgba(62,207,142,.15);color:var(--good);}
   .eff-warn{background:rgba(224,167,46,.15);color:var(--warn);}
@@ -145,7 +146,7 @@
 
   <!-- TAB: ASSIGNMENT -->
   <div id="tab-assignment" class="tab-content" style="display:none;">
-    <div class="panel">
+    <div class="panel sticky-toolbar">
       <div class="panel-body">
         <div class="row">
           <div class="field"><label>Tanggal</label><input type="date" id="assignDate"></div>
@@ -201,7 +202,7 @@
 
   <!-- TAB: KAPASITAS -->
   <div id="tab-kapasitas" class="tab-content">
-    <div class="panel">
+    <div class="panel sticky-toolbar">
       <div class="panel-body">
         <div class="row">
           <div class="field"><label>Tanggal</label><input type="date" id="kapDate"></div>
@@ -247,6 +248,25 @@ let assignments = [];  // {localId, tanggal, noAbsen, nama, line, style, proses,
 let kapasitas = [];    // {id, tanggal, noAbsen, nama, line, style, proses, smv, outputs:[9], synced}
 let pendingDeleteAssign = []; // [{TANGGAL, 'NO. ABSEN', PROSES}]
 let pendingDeleteKap = [];    // [{ID}]
+
+function queueDeleteAssign(obj){
+  pendingDeleteAssign.push(obj);
+  storeSet('kap_pendingDeleteAssign', pendingDeleteAssign, true);
+}
+function queueDeleteKap(obj){
+  pendingDeleteKap.push(obj);
+  storeSet('kap_pendingDeleteKap', pendingDeleteKap, true);
+}
+function excludePendingDeletes(){
+  if(pendingDeleteAssign.length){
+    const keys = new Set(pendingDeleteAssign.map(d=>`${d['TANGGAL']}||${d['NO. ABSEN']}||${d['PROSES']}`));
+    assignments = assignments.filter(a=> !keys.has(`${a.tanggal}||${a.noAbsen}||${a.proses}`));
+  }
+  if(pendingDeleteKap.length){
+    const idsSet = new Set(pendingDeleteKap.map(d=>d['ID']));
+    kapasitas = kapasitas.filter(k=> !idsSet.has(k.id));
+  }
+}
 let lastSyncTime = null;
 let lastRefTime = null;
 
@@ -368,7 +388,7 @@ async function syncNow(evtOrMsgElId){
       .filter(a => a.style && a.proses)
       .map(a => ({ 'TANGGAL': a.tanggal, 'LINE': a.line, 'NO. ABSEN': a.noAbsen, 'NAMA': a.nama, 'STYLE': a.style, 'PROSES': a.proses }));
     if(assignRows.length) await gasPost('syncAssignment', assignRows);
-    if(pendingDeleteAssign.length){ await gasPost('deleteAssignment', pendingDeleteAssign); pendingDeleteAssign = []; }
+    if(pendingDeleteAssign.length){ await gasPost('deleteAssignment', pendingDeleteAssign); pendingDeleteAssign = []; storeSet('kap_pendingDeleteAssign', pendingDeleteAssign, true); }
 
     const kapRows = kapasitas.map(k => {
       const {rata} = computeRata(k.outputs);
@@ -384,7 +404,7 @@ async function syncNow(evtOrMsgElId){
       return row;
     });
     if(kapRows.length) await gasPost('syncKapasitas', kapRows);
-    if(pendingDeleteKap.length){ await gasPost('deleteKapasitas', pendingDeleteKap); pendingDeleteKap = []; }
+    if(pendingDeleteKap.length){ await gasPost('deleteKapasitas', pendingDeleteKap); pendingDeleteKap = []; storeSet('kap_pendingDeleteKap', pendingDeleteKap, true); }
 
     assignments.forEach(a=>a.synced=true);
     kapasitas.forEach(k=>k.synced=true);
@@ -606,7 +626,7 @@ function openDeleteRangeModal(tr){
       a.noAbsen===noAbsen && a.proses===proses && a.tanggal>=fromDate && a.tanggal<=untilDate
     );
     toDelete.forEach(a=>{
-      if(a.synced){ pendingDeleteAssign.push({ 'TANGGAL': a.tanggal, 'NO. ABSEN': a.noAbsen, 'PROSES': a.proses }); }
+      if(a.synced){ queueDeleteAssign({ 'TANGGAL': a.tanggal, 'NO. ABSEN': a.noAbsen, 'PROSES': a.proses }); }
     });
     const deleteIds = new Set(toDelete.map(a=>a.localId));
     assignments = assignments.filter(a=>!deleteIds.has(a.localId));
@@ -715,7 +735,7 @@ function saveAssignmentRow(tr){
     const wasComplete = existing.style && existing.proses;
     existing.line = line; existing.style = style; existing.proses = proses; existing.synced=false;
     if(wasComplete && !(style && proses)){
-      pendingDeleteAssign.push({ 'TANGGAL': existing.tanggal, 'NO. ABSEN': existing.noAbsen, 'PROSES': existing.proses });
+      queueDeleteAssign({ 'TANGGAL': existing.tanggal, 'NO. ABSEN': existing.noAbsen, 'PROSES': existing.proses });
     }
   }
   storeSet('kap_assignments', assignments, true);
@@ -725,7 +745,7 @@ function removeAssignmentRow(tr){
   const rid = tr.getAttribute('data-rid');
   const target = assignments.find(a=>a.localId===rid);
   if(target && target.style && target.proses){
-    pendingDeleteAssign.push({ 'TANGGAL': target.tanggal, 'NO. ABSEN': target.noAbsen, 'PROSES': target.proses });
+    queueDeleteAssign({ 'TANGGAL': target.tanggal, 'NO. ABSEN': target.noAbsen, 'PROSES': target.proses });
   }
   assignments = assignments.filter(a=>a.localId!==rid);
   storeSet('kap_assignments', assignments, true);
@@ -1146,7 +1166,7 @@ function openBulkDeleteModal(){
     if(!confirm(`Yakin hapus ${matched.length} baris assignment ini? Tindakan ini akan tersinkron ke Sheets juga.`)) return;
 
     matched.forEach(a=>{
-      if(a.synced){ pendingDeleteAssign.push({ 'TANGGAL': a.tanggal, 'NO. ABSEN': a.noAbsen, 'PROSES': a.proses }); }
+      if(a.synced){ queueDeleteAssign({ 'TANGGAL': a.tanggal, 'NO. ABSEN': a.noAbsen, 'PROSES': a.proses }); }
     });
     const deleteIds = new Set(matched.map(a=>a.localId));
     assignments = assignments.filter(a=>!deleteIds.has(a.localId));
@@ -1232,14 +1252,14 @@ function computeDurationDates(startDate, durasi, untilDate){
 }
 
 function removeKapasitasRow(k){
-  if(k.synced){ pendingDeleteKap.push({ 'ID': k.id }); }
+  if(k.synced){ queueDeleteKap({ 'ID': k.id }); }
   kapasitas = kapasitas.filter(x=>x.id!==k.id);
 }
 
 function removeAssignmentFor(date, noAbsen, proses, line){
   const target = assignments.find(a=>a.tanggal===date && a.noAbsen===noAbsen && a.proses===proses && a.line===line);
   if(target){
-    if(target.synced){ pendingDeleteAssign.push({ 'TANGGAL': target.tanggal, 'NO. ABSEN': target.noAbsen, 'PROSES': target.proses }); }
+    if(target.synced){ queueDeleteAssign({ 'TANGGAL': target.tanggal, 'NO. ABSEN': target.noAbsen, 'PROSES': target.proses }); }
     assignments = assignments.filter(a=>a.localId!==target.localId);
   }
 }
@@ -1447,6 +1467,8 @@ async function init(){
   dataSmv = (await storeGet('kap_dataSmv', true)) || [];
   assignments = (await storeGet('kap_assignments', true)) || [];
   kapasitas = (await storeGet('kap_kapasitas', true)) || [];
+  pendingDeleteAssign = (await storeGet('kap_pendingDeleteAssign', true)) || [];
+  pendingDeleteKap = (await storeGet('kap_pendingDeleteKap', true)) || [];
 
   const uiState = await loadUiState();
   applyUiStateValues(uiState);
@@ -1457,8 +1479,12 @@ async function init(){
 
   if(config.gasUrl){
     await Promise.all([ refreshReferenceData(), pullExistingData() ]);
+    excludePendingDeletes();
     renderAssignmentTable();
     renderKapasitasTable();
+    if(pendingDeleteAssign.length || pendingDeleteKap.length){
+      syncNow();
+    }
   }
 
   setInterval(()=>{ if(config.gasUrl) syncNow(); }, 5*60*1000);
