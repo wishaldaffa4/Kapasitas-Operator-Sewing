@@ -555,10 +555,23 @@ function renderAssignmentTable(){
         warnIcon.style.display = 'none';
         return;
       }
+      const noAbsen = tr.getAttribute('data-noabsen');
+      const rid = tr.getAttribute('data-rid');
+      const isDuplicate = assignments.some(a =>
+        a.localId !== rid && a.noAbsen === noAbsen && a.tanggal === date &&
+        (a.proses||'').trim().toUpperCase() === proses.toUpperCase()
+      );
+      if(isDuplicate){
+        prosesInput.classList.add('proses-invalid');
+        warnIcon.style.display = 'inline';
+        warnIcon.title = 'Proses ini sudah dipakai di baris lain untuk operator ini pada tanggal yang sama — akan saling menimpa saat disinkronkan. Ganti salah satu Proses-nya.';
+        return;
+      }
       const validList = prosesForStyle(style).map(p=>p.trim().toUpperCase());
       const isValid = validList.includes(proses.toUpperCase());
       prosesInput.classList.toggle('proses-invalid', !isValid);
       warnIcon.style.display = isValid ? 'none' : 'inline';
+      warnIcon.title = 'Proses ini tidak ditemukan di Data SMV untuk Style yang dipilih';
     }
     validateProses();
 
