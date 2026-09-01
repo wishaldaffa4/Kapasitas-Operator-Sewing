@@ -155,6 +155,7 @@
           <div class="field"><label>&nbsp;</label><button class="secondary" id="toggleCopyPanelBtn">Salin ke tanggal lain</button></div>
           <div class="field"><label>&nbsp;</label><button class="secondary" id="openImportBtn">Impor data awal</button></div>
           <div class="field"><label>&nbsp;</label><button class="danger" id="openBulkDeleteBtn" style="border:1px solid var(--bad);">Hapus massal</button></div>
+          <div class="field"><label>&nbsp;</label><button class="danger" id="openDedupBtn" style="border:1px solid var(--bad);">Bersihkan duplikat</button></div>
           <div class="field"><label>&nbsp;</label><button id="saveAssignBtn">💾 Simpan &amp; cetak ke Sheets</button></div>
           <span class="hint" id="assignSaveMsg"></span>
         </div>
@@ -239,7 +240,7 @@
 </div>
 
 <script>
-const LINES = ['A01','F01','F02','F03','F04','F05','F06','F07','F08','S-F08','F09','F10','F11','F12','F13','F14','S-F14','CAD','K08','K09','K49'];
+const LINES = ['A01','F01','F02','F03','F04','F05','F06','F07','F08','S-F08','F09','F10','F11','F12','F13','F14','S-F14','CAD','K08','K09','K49','REPAIR'];
 
 let config = { gasUrl: 'https://script.google.com/macros/s/AKfycbyw1MOpplaAnsKI-6BsDg-malslfRkgxRLZKNTlgl2J7agaophG5wAOxY_EgAz7jFpePw/exec' };
 let dataOpt = [];      // {NIP, NAMA, ...}
@@ -1191,6 +1192,88 @@ function openBulkDeleteModal(){
   });
 }
 
+/* ---------- Bersihkan duplikat ---------- */
+function findDuplicateGroups(){
+  const groups = {};
+  assignments.forEach(a=>{
+    if(!a.proses) return;
+    const key = `${a.tanggal}||${a.noAbsen}||${a.proses.trim().toUpperCase()}`;
+    if(!groups[key]) groups[key] = [];
+    groups[key].push(a);
+  });
+  return Object.values(groups).filter(g=>g.length>1);
+}
+
+function openDedupModal(){
+  const dupGroups = findDuplicateGroups();
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+
+  if(dupGroups.length === 0){
+    backdrop.innerHTML = `
+      <div class="modal">
+        <h3>Bersihkan duplikat</h3>
+        <div class="hint">Tidak ditemukan duplikat (Tanggal + No. Absen + Proses yang sama) di seluruh data assignment saat ini.</div>
+        <div class="modal-actions"><button id="dedupClose">Tutup</button></div>
+      </div>
+    `;
+    document.getElementById('appRoot').appendChild(backdrop);
+    document.getElementById('dedupClose').addEventListener('click', ()=> backdrop.remove());
+    return;
+  }
+
+  const totalDupRows = dupGroups.reduce((sum,g)=> sum + (g.length-1), 0);
+  const preview = dupGroups.slice(0,10).map(g=>{
+    const a = g[0];
+    return `${fmtDate(a.tanggal)} — ${a.nama} (${a.noAbsen}) — ${a.line||'-'} — ${a.proses} <span class="hint" style="display:inline;">(${g.length} baris identik)</span>`;
+  }).join('<br>');
+  const more = dupGroups.length > 10 ? `<br>...dan ${dupGroups.length-10} kelompok duplikat lainnya` : '';
+
+  backdrop.innerHTML = `
+    <div class="modal" style="width:600px;">
+      <h3>Bersihkan duplikat assignment</h3>
+      <div class="hint" style="margin-bottom:10px;">Ditemukan <b>${dupGroups.length}</b> kelompok assignment dengan kunci (Tanggal + No. Absen + Proses) yang sama persis lebih dari satu kali.</div>
+      <div style="background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:12px;max-height:220px;overflow-y:auto;">${preview}${more}</div>
+      <div class="hint" style="margin-top:8px;color:var(--bad);font-weight:600;">Akan menghapus ${totalDupRows} baris berlebih (menyisakan 1 baris per kelompok).</div>
+      <div class="hint" style="margin-top:6px;">Baris yang dipertahankan adalah yang Line/Style-nya paling lengkap (diutamakan yang tidak kosong).</div>
+      <div class="modal-actions">
+        <button class="secondary" id="dedupCancel">Batal</button>
+        <button class="danger" id="dedupConfirm" style="background:var(--bad);color:#fff;">Hapus ${totalDupRows} baris berlebih</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('appRoot').appendChild(backdrop);
+
+  document.getElementById('dedupCancel').addEventListener('click', ()=> backdrop.remove());
+  document.getElementById('dedupConfirm').addEventListener('click', ()=>{
+    if(!confirm(`Yakin hapus ${totalDupRows} baris duplikat? Tindakan ini akan tersinkron ke Sheets juga.`)) return;
+
+    const idsToDelete = [];
+    dupGroups.forEach(group=>{
+      const sorted = group.slice().sort((a,b)=>{
+        const scoreA = (a.line?1:0) + (a.style?1:0);
+        const scoreB = (b.line?1:0) + (b.style?1:0);
+        if(scoreB !== scoreA) return scoreB - scoreA;
+        return 0;
+      });
+      const keep = sorted[0];
+      sorted.slice(1).forEach(a=> idsToDelete.push(a.localId));
+    });
+
+    const toDelete = assignments.filter(a=> idsToDelete.includes(a.localId));
+    toDelete.forEach(a=>{
+      if(a.synced){ queueDeleteAssign({ 'TANGGAL': a.tanggal, 'NO. ABSEN': a.noAbsen, 'PROSES': a.proses }); }
+    });
+    const deleteIdSet = new Set(idsToDelete);
+    assignments = assignments.filter(a=> !deleteIdSet.has(a.localId));
+
+    storeSet('kap_assignments', assignments, true);
+    backdrop.remove();
+    renderAssignmentTable();
+    syncNow('assignSaveMsg');
+  });
+}
+
 /* ---------- Tabs ---------- */
 function switchTab(tabName){
   document.querySelectorAll('#sidebarNav button').forEach(b=>b.classList.toggle('active', b.dataset.tab===tabName));
@@ -1445,6 +1528,7 @@ document.getElementById('copyLineScope').addEventListener('change', (e)=>{
 });
 document.getElementById('openImportBtn').addEventListener('click', openImportModal);
 document.getElementById('openBulkDeleteBtn').addEventListener('click', openBulkDeleteModal);
+document.getElementById('openDedupBtn').addEventListener('click', openDedupModal);
 document.getElementById('applyCopyBtn').addEventListener('click', applyCopyRange);
 document.getElementById('fillLineBtn').addEventListener('click', ()=> fillColumnDown('.a-line'));
 document.getElementById('fillStyleBtn').addEventListener('click', ()=> fillColumnDown('.a-style'));
