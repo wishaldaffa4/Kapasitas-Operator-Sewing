@@ -88,7 +88,7 @@
     table.data-table thead{display:none;}
     table.data-table, table.data-table tbody{display:block;width:100%;}
     table.data-table tr{display:block;background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:10px;}
-    table.data-table td{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 2px;border-bottom:1px solid var(--border);white-space:normal;}
+    table.data-table td{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px;padding:6px 2px;border-bottom:1px solid var(--border);white-space:normal;}
     table.data-table td:last-child{border-bottom:none;}
     table.data-table td::before{content:attr(data-label);color:var(--text-dim);font-size:11px;flex-shrink:0;}
     table.data-table td.out-td{display:inline-flex;flex-direction:column;align-items:center;width:52px;border-bottom:none;padding:4px;}
@@ -399,12 +399,12 @@ async function syncNow(evtOrMsgElId){
       const effPercent = (rata!==null && k.smv) ? (rata/k.smv*100) : null;
       const effDecimal = (rata!==null && k.smv) ? (rata/k.smv) : '';
       const row = { 'ID': k.id, 'TANGGAL': k.tanggal, 'LINE': k.line, 'NO. ABSEN': k.noAbsen, 'NAMA': k.nama, 'STYLE': k.style, 'PROSES': k.proses, 'SMV': k.smv, 'TOTAL': (k.outputs||[]).filter(v=>v!=='' && v!=null).reduce((a,b)=>a+Number(b),0), 'RATA-RATA': rata!==null?rata:'', 'EFF': effDecimal,
-        'SISA WAKTU PENETAPAN (BULAN)': sisaWaktuPenetapan(k.noAbsen),
-        'MASA KERJA': masaKerjaDisplay(k.noAbsen),
-        'KATEGORI EFISIENSI': kategoriEfisiensi(effPercent),
+        'EVALUASI PENETAPAN (BULAN)': sisaWaktuPenetapan(k.noAbsen),
+        'LAMA KERJA (TAHUN)': masaKerjaDisplay(k.noAbsen),
+        'KATEGORI EFF': kategoriEfisiensi(effPercent),
         'LEVEL SKILL': lookupLevelSkill(k.style, k.proses)
       };
-      k.outputs.forEach((v,i)=>{ row['OUTPUT JAM '+(i+1)] = v; });
+      k.outputs.forEach((v,i)=>{ row['OUTPUT JAM KE '+(i+1)] = v; });
       return row;
     });
     if(kapRows.length) await gasPost('syncKapasitas', kapRows);
