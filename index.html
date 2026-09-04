@@ -118,6 +118,7 @@
   <aside class="sidebar" id="sidebarNav">
     <button class="active" data-tab="kapasitas"><span class="side-icon">📋</span> Input Kapasitas</button>
     <button data-tab="assignment"><span class="side-icon">🗓️</span> Assignment Operator</button>
+    <button data-tab="summary"><span class="side-icon">📈</span> Summary</button>
     <hr>
     <button data-tab="settings"><span class="side-icon">⚙️</span> Pengaturan</button>
   </aside>
@@ -202,6 +203,52 @@
         <div class="empty" id="assignEmpty" style="display:none;">Belum ada data operator aktif. Cek koneksi di tab Pengaturan.</div>
       </div>
     </div>
+  </div>
+
+  <!-- TAB: SUMMARY -->
+  <div id="tab-summary" class="tab-content" style="display:none;">
+
+    <div class="panel">
+      <div class="panel-title">1. Jumlah Operator per Line — 7 Hari Terakhir</div>
+      <div class="table-wrap">
+        <table><thead><tr id="sumOpCountHead"></tr></thead><tbody id="sumOpCountBody"></tbody></table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">2. Distribusi Level Skill Operator</div>
+      <div class="panel-body">
+        <div class="row" style="margin-bottom:12px;">
+          <div class="field"><label>Tanggal</label><input type="date" id="sumSkillDate"></div>
+        </div>
+        <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:center;">
+          <div id="sumSkillChart"></div>
+          <div id="sumSkillLegend" style="font-size:13px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">3. Kategori Belajar &amp; Bisa per Line (<span id="sumBelajarDateLabel">-</span>)</div>
+      <div class="panel-body" id="sumBelajarBisaArea"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">4. Performansi Operator — Sisa Penetapan &lt; 24 Bulan (histori keseluruhan)</div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>No. Absen</th><th>Nama</th><th>Sisa Penetapan (Bulan)</th><th>EFF Terbaik</th><th>Level Skill</th><th>Tanggal</th><th>Style</th><th>Proses</th></tr></thead>
+          <tbody id="sumPerformBody"></tbody>
+        </table>
+        <div class="empty" id="sumPerformEmpty" style="display:none;">Memuat data historis...</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">5. Jumlah Kapasitas per Proses per Line (<span id="sumKapasitasDateLabel">-</span>)</div>
+      <div class="panel-body" id="sumKapasitasArea"></div>
+    </div>
+
   </div>
 
   <!-- TAB: KAPASITAS -->
@@ -1277,6 +1324,243 @@ function openDedupModal(){
   });
 }
 
+/* ---------- Summary ---------- */
+function findLastDateWithOutput(beforeOrEqual){
+  const datesWithOutput = new Set();
+  kapasitas.forEach(k=>{
+    if(k.tanggal && k.tanggal<=beforeOrEqual){
+      const hasOutput = (k.outputs||[]).some(v=>v!=='' && v!=null && v!==undefined);
+      if(hasOutput) datesWithOutput.add(k.tanggal);
+    }
+  });
+  const sorted = [...datesWithOutput].sort().reverse();
+  return sorted[0] || null;
+}
+
+function operatorLevelSkillOnDate(dateStr){
+  const map = {};
+  kapasitas.forEach(k=>{
+    if(k.tanggal!==dateStr) return;
+    const hasOutput = (k.outputs||[]).some(v=>v!=='' && v!=null);
+    if(!hasOutput) return;
+    const lvl = Number(lookupLevelSkill(k.style, k.proses));
+    if(isNaN(lvl)) return;
+    if(!map[k.noAbsen] || lvl > map[k.noAbsen].maxLevel){
+      map[k.noAbsen] = { nama:k.nama, maxLevel:lvl };
+    }
+  });
+  return map;
+}
+
+function renderDonutChart(containerId, data, total){
+  const el = document.getElementById(containerId);
+  const size=160, cx=80, cy=80, r=60, strokeW=28;
+  if(!data.length || total===0){
+    el.innerHTML = `<svg width="${size}" height="${size}"><circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--border)" stroke-width="${strokeW}"/></svg>`;
+    return;
+  }
+  let cumulative=0;
+  const circumference = 2*Math.PI*r;
+  const segments = data.map(d=>{
+    const frac = d.value/total;
+    const dash = frac*circumference;
+    const gap = circumference-dash;
+    const offset = -cumulative*circumference;
+    cumulative += frac;
+    return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${d.color}" stroke-width="${strokeW}" stroke-dasharray="${dash} ${gap}" stroke-dashoffset="${offset}" transform="rotate(-90 ${cx} ${cy})"/>`;
+  }).join('');
+  el.innerHTML = `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${segments}<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="middle" fill="var(--text)" font-size="22" font-weight="700">${total}</text></svg>`;
+}
+
+function renderSummarySection1(){
+  const today = todayStr();
+  const days=[];
+  for(let i=6;i>=0;i--){ const d=new Date(today); d.setDate(d.getDate()-i); days.push(d.toISOString().slice(0,10)); }
+
+  const linesInUse = new Set();
+  const countMap = {};
+  kapasitas.forEach(k=>{
+    if(!days.includes(k.tanggal)) return;
+    const hasOutput = (k.outputs||[]).some(v=>v!=='' && v!=null);
+    if(!hasOutput) return;
+    linesInUse.add(k.line);
+    countMap[k.line] = countMap[k.line]||{};
+    countMap[k.line][k.tanggal] = countMap[k.line][k.tanggal]||new Set();
+    countMap[k.line][k.tanggal].add(k.noAbsen);
+  });
+
+  const linesToShow = LINES.filter(l=>linesInUse.has(l)).concat([...linesInUse].filter(l=>!LINES.includes(l)));
+  const head=document.getElementById('sumOpCountHead');
+  head.innerHTML = '<th>Line</th>' + days.map(d=>`<th>${fmtDate(d)}</th>`).join('');
+  const body=document.getElementById('sumOpCountBody');
+  if(linesToShow.length===0){
+    body.innerHTML = `<tr><td colspan="${days.length+1}" style="text-align:center;color:var(--text-dim);padding:16px;">Belum ada data output pada rentang ini.</td></tr>`;
+    return;
+  }
+  body.innerHTML = linesToShow.map(line=>{
+    const cells = days.map(d=>{
+      const count = countMap[line] && countMap[line][d] ? countMap[line][d].size : 0;
+      return `<td style="${count>0?'color:var(--accent);font-weight:600;':'color:var(--text-dim);'}">${count>0?count:'-'}</td>`;
+    }).join('');
+    return `<tr><td><b>${line}</b></td>${cells}</tr>`;
+  }).join('');
+}
+
+function renderSummarySection2(){
+  const dateInput = document.getElementById('sumSkillDate');
+  if(!dateInput.value){
+    dateInput.value = findLastDateWithOutput(todayStr()) || todayStr();
+  }
+  const dateStr = dateInput.value;
+  const map = operatorLevelSkillOnDate(dateStr);
+  const counts = {};
+  Object.values(map).forEach(o=>{ counts[o.maxLevel] = (counts[o.maxLevel]||0)+1; });
+  const levels = Object.keys(counts).map(Number).sort((a,b)=>a-b);
+  const total = Object.values(counts).reduce((a,b)=>a+b,0);
+  const colors = ['#4d9fff','#3ecf8e','#e0a72e','#e0554e','#a78bfa','#f472b6'];
+  const data = levels.map((lv,i)=>({ label:'Level '+lv, value:counts[lv], color:colors[i%colors.length] }));
+
+  renderDonutChart('sumSkillChart', data, total);
+  const legend = document.getElementById('sumSkillLegend');
+  if(total===0){
+    legend.innerHTML = '<span class="hint">Tidak ada data operator pada tanggal ini.</span>';
+  }else{
+    legend.innerHTML = data.map(d=>`
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+        <span style="width:11px;height:11px;border-radius:50%;background:${d.color};display:inline-block;flex-shrink:0;"></span>
+        <span>${d.label}: <b>${d.value}</b> operator (${(d.value/total*100).toFixed(1)}%)</span>
+      </div>
+    `).join('');
+  }
+}
+
+function renderSummarySection3(){
+  const dateStr = findLastDateWithOutput(todayStr());
+  document.getElementById('sumBelajarDateLabel').textContent = dateStr ? fmtDate(dateStr) : '-';
+  const area = document.getElementById('sumBelajarBisaArea');
+  if(!dateStr){ area.innerHTML = '<div class="hint">Belum ada data output.</div>'; return; }
+
+  const byLine = {};
+  kapasitas.forEach(k=>{
+    if(k.tanggal!==dateStr) return;
+    const {rata} = computeRata(k.outputs);
+    if(rata===null || !k.smv) return;
+    const eff = rata/k.smv*100;
+    const kat = kategoriEfisiensi(eff);
+    if(kat!=='Belajar' && kat!=='Bisa') return;
+    byLine[k.line] = byLine[k.line]||[];
+    byLine[k.line].push({ nama:k.nama, noAbsen:k.noAbsen, proses:k.proses, kat, eff });
+  });
+
+  const lines = Object.keys(byLine).sort();
+  if(lines.length===0){ area.innerHTML = '<div class="hint">Tidak ada operator kategori Belajar/Bisa pada tanggal ini.</div>'; return; }
+
+  area.innerHTML = lines.map(line=>{
+    const items = byLine[line];
+    const rows = items.map(o=>`
+      <div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12.5px;">
+        <span>${o.nama} (${o.noAbsen}) — ${o.proses}</span>
+        <span class="eff-pill ${o.kat==='Belajar'?'eff-bad':'eff-warn'}">${o.kat} ${o.eff.toFixed(1)}%</span>
+      </div>
+    `).join('');
+    return `<div style="margin-bottom:16px;"><div style="font-weight:600;color:var(--accent);margin-bottom:6px;">${line} (${items.length} operator)</div>${rows}</div>`;
+  }).join('');
+}
+
+function renderSummarySection5(){
+  const dateStr = findLastDateWithOutput(todayStr());
+  document.getElementById('sumKapasitasDateLabel').textContent = dateStr ? fmtDate(dateStr) : '-';
+  const area = document.getElementById('sumKapasitasArea');
+  if(!dateStr){ area.innerHTML = '<div class="hint">Belum ada data output.</div>'; return; }
+
+  const byLine = {};
+  kapasitas.forEach(k=>{
+    if(k.tanggal!==dateStr) return;
+    const {rata} = computeRata(k.outputs);
+    if(rata===null) return;
+    byLine[k.line] = byLine[k.line]||{};
+    byLine[k.line][k.proses] = byLine[k.line][k.proses]||[];
+    byLine[k.line][k.proses].push({ nama:k.nama, noAbsen:k.noAbsen, rata });
+  });
+
+  const lines = Object.keys(byLine).sort();
+  if(lines.length===0){ area.innerHTML = '<div class="hint">Tidak ada data output pada tanggal ini.</div>'; return; }
+
+  area.innerHTML = lines.map(line=>{
+    const prosesMap = byLine[line];
+    const prosesRows = Object.keys(prosesMap).sort().map(proses=>{
+      const ops = prosesMap[proses];
+      const total = ops.reduce((a,b)=>a+b.rata,0);
+      const detail = ops.length>1 ? ops.map(o=>`${o.nama}: ${o.rata}`).join(', ') : '';
+      return `
+        <div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12.5px;">
+          <div style="display:flex;justify-content:space-between;gap:10px;"><b>${proses}</b><span>Total: <b>${total}</b> (${ops.length} operator)</span></div>
+          ${detail?`<div class="hint" style="margin-top:2px;">${detail}</div>`:''}
+        </div>
+      `;
+    }).join('');
+    return `<div style="margin-bottom:16px;"><div style="font-weight:600;color:var(--accent);margin-bottom:6px;">${line}</div>${prosesRows}</div>`;
+  }).join('');
+}
+
+let bestPerformanceCache = null;
+async function renderSummarySection4(){
+  const tbody = document.getElementById('sumPerformBody');
+  const empty = document.getElementById('sumPerformEmpty');
+
+  const qualifyingOps = dataOpt.filter(o=>{
+    const n = Number(o['SISA WAKTU PENETAPAN (BULAN)']);
+    return !isNaN(n) && n < 24;
+  });
+  if(qualifyingOps.length===0){
+    tbody.innerHTML='';
+    empty.style.display='block';
+    empty.textContent='Tidak ada operator dengan sisa penetapan < 24 bulan.';
+    return;
+  }
+
+  tbody.innerHTML='';
+  empty.style.display='block';
+  empty.textContent='Memuat data historis...';
+
+  try{
+    if(!bestPerformanceCache){
+      bestPerformanceCache = await gasGet('getBestPerformance');
+    }
+    const byNoAbsen = {};
+    bestPerformanceCache.forEach(r=>{ byNoAbsen[r['NO. ABSEN']] = r; });
+
+    empty.style.display='none';
+    tbody.innerHTML = qualifyingOps.map(op=>{
+      const perf = byNoAbsen[op['NIP']];
+      const effVal = perf ? Number(perf['EFF']) : null;
+      return `
+        <tr>
+          <td data-label="No. Absen">${op['NIP']}</td>
+          <td data-label="Nama">${op['NAMA']}</td>
+          <td data-label="Sisa Penetapan (Bulan)">${op['SISA WAKTU PENETAPAN (BULAN)']}</td>
+          <td data-label="EFF Terbaik">${perf ? `<span class="eff-pill ${effClass(effVal)}">${effVal.toFixed(2)}%</span>` : '-'}</td>
+          <td data-label="Level Skill">${perf ? perf['LEVEL SKILL'] : '-'}</td>
+          <td data-label="Tanggal">${perf ? fmtDate(perf['TANGGAL']) : '-'}</td>
+          <td data-label="Style">${perf ? perf['STYLE'] : '-'}</td>
+          <td data-label="Proses">${perf ? perf['PROSES'] : '-'}</td>
+        </tr>
+      `;
+    }).join('');
+  }catch(e){
+    empty.style.display='block';
+    empty.textContent='Gagal memuat data historis: '+e.message;
+  }
+}
+
+function renderSummaryTab(){
+  renderSummarySection1();
+  renderSummarySection2();
+  renderSummarySection3();
+  renderSummarySection5();
+  renderSummarySection4();
+}
+
 /* ---------- Tabs ---------- */
 function switchTab(tabName){
   document.querySelectorAll('#sidebarNav button').forEach(b=>b.classList.toggle('active', b.dataset.tab===tabName));
@@ -1284,6 +1568,7 @@ function switchTab(tabName){
   document.getElementById('tab-'+tabName).style.display='block';
   if(tabName==='assignment') renderAssignmentTable();
   if(tabName==='kapasitas') renderKapasitasTable();
+  if(tabName==='summary') renderSummaryTab();
   saveUiState();
 }
 document.querySelectorAll('#sidebarNav button').forEach(btn=>{
@@ -1509,6 +1794,7 @@ document.getElementById('assignLineFilter').addEventListener('change', renderAss
 document.getElementById('kapDate').addEventListener('change', renderKapasitasTable);
 document.getElementById('kapLine').addEventListener('change', renderKapasitasTable);
 document.getElementById('kapSearch').addEventListener('input', renderKapasitasTable);
+document.getElementById('sumSkillDate').addEventListener('change', renderSummarySection2);
 
 document.getElementById('toggleCopyPanelBtn').addEventListener('click', ()=>{
   const panel = document.getElementById('copyPanel');
