@@ -1535,7 +1535,7 @@ async function renderSummarySection4(){
       const sisaBulan = Number(op['SISA WAKTU PENETAPAN (BULAN)']);
       const effVal = perf ? Number(perf['EFF']) : null;
       return { op, perf, sisaBulan, effVal };
-    });
+    }).filter(r => r.perf);
 
     rows.sort((a,b)=>{
       if(a.sisaBulan !== b.sisaBulan) return a.sisaBulan - b.sisaBulan;
@@ -1543,6 +1543,13 @@ async function renderSummarySection4(){
       const eb = b.effVal===null ? -Infinity : b.effVal;
       return ea - eb;
     });
+
+    if(rows.length===0){
+      tbody.innerHTML='';
+      empty.style.display='block';
+      empty.textContent='Tidak ada operator dengan sisa penetapan 1-24 bulan yang punya data historis.';
+      return;
+    }
 
     empty.style.display='none';
     tbody.innerHTML = rows.map(({op, perf, effVal})=>`
