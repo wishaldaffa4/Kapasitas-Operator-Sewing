@@ -237,7 +237,7 @@
       <div class="panel-title">4. Performansi Operator — Sisa Penetapan &lt; 24 Bulan (histori keseluruhan)</div>
       <div class="table-wrap">
         <table class="data-table">
-          <thead><tr><th>No. Absen</th><th>Nama</th><th>Sisa Penetapan (Bulan)</th><th>Rata-rata</th><th>EFF Terbaik</th><th>Level Skill</th><th>Tanggal</th><th>Style</th><th>Proses</th></tr></thead>
+          <thead><tr><th>No. Absen</th><th>Nama</th><th>Line</th><th>Sisa Penetapan (Bulan)</th><th>Rata-rata</th><th>EFF Terbaik</th><th>Level Skill</th><th>Tanggal</th><th>Style</th><th>Proses</th><th>Diisi Oleh</th><th>Catatan SPV/Leader</th><th>Tanggal Diisi</th></tr></thead>
           <tbody id="sumPerformBody"></tbody>
         </table>
         <div class="empty" id="sumPerformEmpty" style="display:none;">Memuat data historis...</div>
@@ -1504,6 +1504,44 @@ function renderSummarySection5(){
 }
 
 let bestPerformanceCache = null;
+let catatanEvaluasiCache = null;
+
+async function loadCatatanEvaluasi(){
+  if(catatanEvaluasiCache) return catatanEvaluasiCache;
+  try{
+    const rows = await gasGet('getCatatanEvaluasi');
+    catatanEvaluasiCache = {};
+    rows.forEach(r=>{
+      catatanEvaluasiCache[r['NO. ABSEN']] = {
+        catatan: r['CATATAN'] || '',
+        diisiOleh: r['DIISI OLEH'] || '',
+        tanggalDiisi: r['TANGGAL DIISI'] || ''
+      };
+    });
+  }catch(e){
+    catatanEvaluasiCache = {};
+  }
+  return catatanEvaluasiCache;
+}
+
+async function saveCatatanEvaluasi(noAbsen, nama, catatan, diisiOleh){
+  const tanggalDiisi = todayStr();
+  catatanEvaluasiCache[noAbsen] = { catatan, diisiOleh, tanggalDiisi };
+  const row = { 'NO. ABSEN': noAbsen, 'NAMA': nama, 'CATATAN': catatan, 'DIISI OLEH': diisiOleh, 'TANGGAL DIISI': tanggalDiisi };
+  try{
+    await gasPost('syncCatatanEvaluasi', [row]);
+    return { ok:true, tanggalDiisi };
+  }catch(e){
+    return { ok:false, error: e.message };
+  }
+}
+
+function getCurrentLineForOperator(noAbsen){
+  const records = kapasitas.filter(k=>k.noAbsen===noAbsen && k.line);
+  if(records.length===0) return '';
+  records.sort((a,b)=> (b.tanggal||'').localeCompare(a.tanggal||''));
+  return records[0].line;
+}
 async function renderSummarySection4(){
   const tbody = document.getElementById('sumPerformBody');
   const empty = document.getElementById('sumPerformEmpty');
@@ -1527,6 +1565,7 @@ async function renderSummarySection4(){
     if(!bestPerformanceCache){
       bestPerformanceCache = await gasGet('getBestPerformance');
     }
+    await loadCatatanEvaluasi();
     const byNoAbsen = {};
     bestPerformanceCache.forEach(r=>{ byNoAbsen[r['NO. ABSEN']] = r; });
 
@@ -1534,7 +1573,10 @@ async function renderSummarySection4(){
       const perf = byNoAbsen[op['NIP']];
       const sisaBulan = Number(op['SISA WAKTU PENETAPAN (BULAN)']);
       const effVal = perf ? Number(perf['EFF']) : null;
-      return { op, perf, sisaBulan, effVal };
+      const currentLine = getCurrentLineForOperator(op['NIP']);
+      const lineToShow = currentLine || (perf ? perf['LINE'] : '') || '-';
+      const catatan = catatanEvaluasiCache[op['NIP']] || { catatan:'', diisiOleh:'', tanggalDiisi:'' };
+      return { op, perf, sisaBulan, effVal, lineToShow, catatan };
     }).filter(r => r.perf);
 
     rows.sort((a,b)=>{
@@ -1552,10 +1594,11 @@ async function renderSummarySection4(){
     }
 
     empty.style.display='none';
-    tbody.innerHTML = rows.map(({op, perf, effVal})=>`
-        <tr>
+    tbody.innerHTML = rows.map(({op, perf, effVal, lineToShow, catatan}, idx)=>`
+        <tr data-noabsen="${op['NIP']}" data-nama="${(op['NAMA']||'').replace(/"/g,'&quot;')}">
           <td data-label="No. Absen">${op['NIP']}</td>
           <td data-label="Nama">${op['NAMA']}</td>
+          <td data-label="Line">${lineToShow}</td>
           <td data-label="Sisa Penetapan (Bulan)">${op['SISA WAKTU PENETAPAN (BULAN)']}</td>
           <td data-label="Rata-rata">${perf && perf['RATA-RATA']!=='' ? perf['RATA-RATA'] : '-'}</td>
           <td data-label="EFF Terbaik">${perf ? `<span class="eff-pill ${effClass(effVal)}">${effVal.toFixed(2)}%</span>` : '-'}</td>
@@ -1563,8 +1606,35 @@ async function renderSummarySection4(){
           <td data-label="Tanggal">${perf ? fmtDate(perf['TANGGAL']) : '-'}</td>
           <td data-label="Style">${perf ? perf['STYLE'] : '-'}</td>
           <td data-label="Proses">${perf ? perf['PROSES'] : '-'}</td>
+          <td data-label="Diisi Oleh"><input type="text" class="catatan-diisi-oleh" placeholder="Nama SPV/Leader" value="${catatan.diisiOleh}" style="width:130px;"></td>
+          <td data-label="Catatan SPV/Leader"><input type="text" class="catatan-isi" placeholder="Tulis masukan..." value="${catatan.catatan}" style="width:220px;"></td>
+          <td data-label="Tanggal Diisi" class="catatan-tanggal-diisi">${catatan.tanggalDiisi ? fmtDate(catatan.tanggalDiisi) : '-'}</td>
         </tr>
       `).join('');
+
+    tbody.querySelectorAll('tr').forEach(tr=>{
+      const noAbsen = tr.getAttribute('data-noabsen');
+      const nama = tr.getAttribute('data-nama');
+      const diisiInput = tr.querySelector('.catatan-diisi-oleh');
+      const catatanInput = tr.querySelector('.catatan-isi');
+      const tanggalCell = tr.querySelector('.catatan-tanggal-diisi');
+
+      async function handleSave(){
+        const originalBg = catatanInput.style.background;
+        catatanInput.style.background = 'rgba(224,167,46,.15)';
+        const result = await saveCatatanEvaluasi(noAbsen, nama, catatanInput.value.trim(), diisiInput.value.trim());
+        if(result.ok){
+          catatanInput.style.background = 'rgba(62,207,142,.15)';
+          tanggalCell.textContent = fmtDate(result.tanggalDiisi);
+          setTimeout(()=>{ catatanInput.style.background = originalBg; }, 1200);
+        }else{
+          catatanInput.style.background = 'rgba(224,85,78,.2)';
+          catatanInput.title = 'Gagal simpan: '+result.error;
+        }
+      }
+      diisiInput.addEventListener('blur', handleSave);
+      catatanInput.addEventListener('blur', handleSave);
+    });
   }catch(e){
     empty.style.display='block';
     empty.textContent='Gagal memuat data historis: '+e.message;
