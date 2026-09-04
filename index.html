@@ -49,6 +49,9 @@
   .proses-invalid{border-color:var(--bad) !important;background:rgba(224,85,78,.08);}
   .proses-warn-icon{color:var(--bad);font-size:12px;margin-left:4px;cursor:help;}
   .sticky-toolbar{position:sticky;top:0;z-index:30;background:var(--bg);padding-top:6px;margin-top:-6px;box-shadow:0 6px 10px -6px rgba(0,0,0,.4);}
+  #sumPerformTable thead th{white-space:normal;word-break:break-word;vertical-align:bottom;}
+  #sumPerformTable td:nth-child(4), #sumPerformTable th:nth-child(4){width:44px;max-width:44px;text-align:center;}
+  #sumPerformTable td:nth-child(5), #sumPerformTable th:nth-child(5){width:60px;max-width:60px;text-align:center;}
   .eff-pill{display:inline-block;padding:2px 8px;border-radius:20px;font-weight:600;font-size:11.5px;}
   .eff-good{background:rgba(62,207,142,.15);color:var(--good);}
   .eff-warn{background:rgba(224,167,46,.15);color:var(--warn);}
@@ -97,6 +100,7 @@
     table.data-table td.out-td .out-input{width:44px;}
     table.data-table td .style-input, table.data-table td .proses-input{width:100%;}
     table.data-table td.col-nama{width:auto;max-width:none;white-space:normal;overflow:visible;text-overflow:clip;}
+    #sumPerformTable td:nth-child(4), #sumPerformTable td:nth-child(5){width:auto;max-width:none;text-align:left;}
     .row .field button{width:100%;white-space:normal;word-break:break-word;text-align:center;line-height:1.3;}
     .hint{white-space:normal;word-break:break-word;}
   }
@@ -236,8 +240,8 @@
     <div class="panel">
       <div class="panel-title">4. Performansi Operator — Sisa Penetapan &lt; 24 Bulan (histori keseluruhan)</div>
       <div class="table-wrap">
-        <table class="data-table">
-          <thead><tr><th>No. Absen</th><th>Nama</th><th>Line</th><th>Sisa Penetapan (Bulan)</th><th>Rata-rata</th><th>EFF Terbaik</th><th>Level Skill</th><th>Tanggal</th><th>Style</th><th>Proses</th><th>Diisi Oleh</th><th>Catatan SPV/Leader</th><th>Tanggal Diisi</th></tr></thead>
+        <table class="data-table" id="sumPerformTable">
+          <thead><tr><th>No. Absen</th><th>Nama</th><th>Line</th><th>Sisa Penetapan (Bulan)</th><th>Rata-rata</th><th>Capacity 100% (SMV)</th><th>EFF Terbaik</th><th>Level Skill</th><th>Tanggal</th><th>Style</th><th>Proses</th><th>Diisi Oleh</th><th>Catatan SPV/Leader</th><th>Tanggal Diisi</th></tr></thead>
           <tbody id="sumPerformBody"></tbody>
         </table>
         <div class="empty" id="sumPerformEmpty" style="display:none;">Memuat data historis...</div>
@@ -1576,11 +1580,16 @@ async function renderSummarySection4(){
       const currentLine = getCurrentLineForOperator(op['NIP']);
       const lineToShow = currentLine || (perf ? perf['LINE'] : '') || '-';
       const catatan = catatanEvaluasiCache[op['NIP']] || { catatan:'', diisiOleh:'', tanggalDiisi:'' };
-      return { op, perf, sisaBulan, effVal, lineToShow, catatan };
+      const capacity100 = perf ? lookupSmv(perf['STYLE'], perf['PROSES']) : 0;
+      const levelSkillVal = perf ? Number(perf['LEVEL SKILL']) : null;
+      return { op, perf, sisaBulan, effVal, lineToShow, catatan, capacity100, levelSkillVal };
     }).filter(r => r.perf);
 
     rows.sort((a,b)=>{
       if(a.sisaBulan !== b.sisaBulan) return a.sisaBulan - b.sisaBulan;
+      const la = (a.levelSkillVal===null || isNaN(a.levelSkillVal)) ? Infinity : a.levelSkillVal;
+      const lb = (b.levelSkillVal===null || isNaN(b.levelSkillVal)) ? Infinity : b.levelSkillVal;
+      if(la !== lb) return la - lb;
       const ea = a.effVal===null ? -Infinity : a.effVal;
       const eb = b.effVal===null ? -Infinity : b.effVal;
       return ea - eb;
@@ -1594,13 +1603,14 @@ async function renderSummarySection4(){
     }
 
     empty.style.display='none';
-    tbody.innerHTML = rows.map(({op, perf, effVal, lineToShow, catatan}, idx)=>`
+    tbody.innerHTML = rows.map(({op, perf, effVal, lineToShow, catatan, capacity100}, idx)=>`
         <tr data-noabsen="${op['NIP']}" data-nama="${(op['NAMA']||'').replace(/"/g,'&quot;')}">
           <td data-label="No. Absen">${op['NIP']}</td>
           <td data-label="Nama">${op['NAMA']}</td>
           <td data-label="Line">${lineToShow}</td>
           <td data-label="Sisa Penetapan (Bulan)">${op['SISA WAKTU PENETAPAN (BULAN)']}</td>
-          <td data-label="Rata-rata">${perf && perf['RATA-RATA']!=='' ? perf['RATA-RATA'] : '-'}</td>
+          <td data-label="Rata-rata">${perf && perf['RATA-RATA']!=='' && !isNaN(Number(perf['RATA-RATA'])) ? Math.round(Number(perf['RATA-RATA'])) : '-'}</td>
+          <td data-label="Capacity 100% (SMV)">${capacity100 ? capacity100 : '-'}</td>
           <td data-label="EFF Terbaik">${perf ? `<span class="eff-pill ${effClass(effVal)}">${effVal.toFixed(2)}%</span>` : '-'}</td>
           <td data-label="Level Skill">${perf ? perf['LEVEL SKILL'] : '-'}</td>
           <td data-label="Tanggal">${perf ? fmtDate(perf['TANGGAL']) : '-'}</td>
@@ -1772,6 +1782,7 @@ function openUnfilledModal(unfilledList, date, line){
           <option value="">-- pilih status --</option>
           <option value="sakit">Sakit</option>
           <option value="izin">Izin</option>
+          <option value="cuti">Cuti</option>
           <option value="pindah">Bukan plotting line ini</option>
         </select>
       </div>
@@ -1835,7 +1846,7 @@ function openUnfilledModal(unfilledList, date, line){
       const k = unfilledList.find(x=>x.id===id);
       const status = rowEl.querySelector('.unfilled-status').value;
 
-      if(status === 'sakit' || status === 'izin'){
+      if(status === 'sakit' || status === 'izin' || status === 'cuti'){
         removeKapasitasRow(k);
       }else if(status === 'pindah'){
         const targetLine = rowEl.querySelector('.unfilled-line').value;
