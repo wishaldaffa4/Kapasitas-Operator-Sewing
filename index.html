@@ -237,7 +237,7 @@
       <div class="panel-title">4. Performansi Operator — Sisa Penetapan &lt; 24 Bulan (histori keseluruhan)</div>
       <div class="table-wrap">
         <table class="data-table">
-          <thead><tr><th>No. Absen</th><th>Nama</th><th>Sisa Penetapan (Bulan)</th><th>EFF Terbaik</th><th>Level Skill</th><th>Tanggal</th><th>Style</th><th>Proses</th></tr></thead>
+          <thead><tr><th>No. Absen</th><th>Nama</th><th>Sisa Penetapan (Bulan)</th><th>Rata-rata</th><th>EFF Terbaik</th><th>Level Skill</th><th>Tanggal</th><th>Style</th><th>Proses</th></tr></thead>
           <tbody id="sumPerformBody"></tbody>
         </table>
         <div class="empty" id="sumPerformEmpty" style="display:none;">Memuat data historis...</div>
@@ -1510,12 +1510,12 @@ async function renderSummarySection4(){
 
   const qualifyingOps = dataOpt.filter(o=>{
     const n = Number(o['SISA WAKTU PENETAPAN (BULAN)']);
-    return !isNaN(n) && n < 24;
+    return !isNaN(n) && n > 0 && n <= 24;
   });
   if(qualifyingOps.length===0){
     tbody.innerHTML='';
     empty.style.display='block';
-    empty.textContent='Tidak ada operator dengan sisa penetapan < 24 bulan.';
+    empty.textContent='Tidak ada operator dengan sisa penetapan 1-24 bulan.';
     return;
   }
 
@@ -1530,23 +1530,34 @@ async function renderSummarySection4(){
     const byNoAbsen = {};
     bestPerformanceCache.forEach(r=>{ byNoAbsen[r['NO. ABSEN']] = r; });
 
-    empty.style.display='none';
-    tbody.innerHTML = qualifyingOps.map(op=>{
+    const rows = qualifyingOps.map(op=>{
       const perf = byNoAbsen[op['NIP']];
+      const sisaBulan = Number(op['SISA WAKTU PENETAPAN (BULAN)']);
       const effVal = perf ? Number(perf['EFF']) : null;
-      return `
+      return { op, perf, sisaBulan, effVal };
+    });
+
+    rows.sort((a,b)=>{
+      if(a.sisaBulan !== b.sisaBulan) return a.sisaBulan - b.sisaBulan;
+      const ea = a.effVal===null ? -Infinity : a.effVal;
+      const eb = b.effVal===null ? -Infinity : b.effVal;
+      return ea - eb;
+    });
+
+    empty.style.display='none';
+    tbody.innerHTML = rows.map(({op, perf, effVal})=>`
         <tr>
           <td data-label="No. Absen">${op['NIP']}</td>
           <td data-label="Nama">${op['NAMA']}</td>
           <td data-label="Sisa Penetapan (Bulan)">${op['SISA WAKTU PENETAPAN (BULAN)']}</td>
+          <td data-label="Rata-rata">${perf && perf['RATA-RATA']!=='' ? perf['RATA-RATA'] : '-'}</td>
           <td data-label="EFF Terbaik">${perf ? `<span class="eff-pill ${effClass(effVal)}">${effVal.toFixed(2)}%</span>` : '-'}</td>
           <td data-label="Level Skill">${perf ? perf['LEVEL SKILL'] : '-'}</td>
           <td data-label="Tanggal">${perf ? fmtDate(perf['TANGGAL']) : '-'}</td>
           <td data-label="Style">${perf ? perf['STYLE'] : '-'}</td>
           <td data-label="Proses">${perf ? perf['PROSES'] : '-'}</td>
         </tr>
-      `;
-    }).join('');
+      `).join('');
   }catch(e){
     empty.style.display='block';
     empty.textContent='Gagal memuat data historis: '+e.message;
