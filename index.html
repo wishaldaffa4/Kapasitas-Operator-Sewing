@@ -43,8 +43,8 @@
   tbody td{padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap;}
   tbody tr:hover{background:var(--panel2);}
   .out-input{width:46px;padding:4px 5px;font-size:12px;text-align:center;}
-  .style-input{width:150px;}
-  .proses-input{width:150px;}
+  .style-input{width:200px;}
+  .proses-input{width:200px;}
   .col-nama{width:150px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .proses-invalid{border-color:var(--bad) !important;background:rgba(224,85,78,.08);}
   .proses-warn-icon{color:var(--bad);font-size:12px;margin-left:4px;cursor:help;}
@@ -279,6 +279,7 @@
               <th>Rata-rata</th><th>EFF</th>
               <th></th>
               <th>J1</th><th>J2</th><th>J3</th><th>J4</th><th>J5</th><th>J6</th><th>J7</th><th>J8</th><th>J9</th>
+              <th></th>
             </tr>
           </thead>
           <tbody id="kapBody"></tbody>
@@ -898,11 +899,13 @@ function renderKapasitasTable(){
         <td class="k-smv" data-label="SMV">${k.smv || '-'}</td>
         <td class="k-rata" data-label="Rata-rata">${rata!==null?rata:'-'}</td>
         <td class="k-eff" data-label="EFF">${eff!==null?`<span class="eff-pill ${effClass(eff)}" title="${kategoriEfisiensi(eff)}">${eff.toFixed(2)}% (${kategoriEfisiensi(eff)})</span>`:'-'}</td>
-        <td data-label="Aksi cepat">
+        <td data-label="Isi cepat">
           <button class="secondary small k-autofill" title="Ambil nilai dari kotak Jam 1-7 yang sudah terisi, isikan ke sisanya yang masih kosong">Isi 1-7</button>
-          <button class="danger small k-clearall" title="Hapus semua output jam untuk operator ini" style="margin-left:4px;">Hapus semua</button>
         </td>
         ${outputsCells}
+        <td data-label="Hapus">
+          <button class="danger small k-clearall" title="Hapus semua output jam untuk operator ini">Hapus semua</button>
+        </td>
       </tr>
     `;
   }).join('');
