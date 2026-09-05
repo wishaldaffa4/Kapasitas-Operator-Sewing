@@ -212,6 +212,11 @@
   <!-- TAB: SUMMARY -->
   <div id="tab-summary" class="tab-content" style="display:none;">
 
+    <div class="row" style="margin-bottom:14px;">
+      <button class="secondary" id="sumRefreshBtn">🔄 Muat ulang data Summary</button>
+      <span class="hint" id="sumRefreshMsg" style="display:inline;"></span>
+    </div>
+
     <div class="panel">
       <div class="panel-title">1. Jumlah Operator per Line — 7 Hari Terakhir</div>
       <div class="table-wrap">
@@ -440,13 +445,17 @@ async function syncNow(evtOrMsgElId){
   setSyncStatus('busy','Menyinkronkan...');
   setMsg('Menyimpan & mencetak ke Sheets...');
   try{
+    // PENTING: hanya kirim baris yang benar-benar berubah sejak sinkron terakhir
+    // (synced === false), supaya perangkat lain yang belum menarik data terbaru
+    // tidak menimpa balik data yang sudah diubah perangkat lain.
     const assignRows = assignments
-      .filter(a => a.style && a.proses)
+      .filter(a => a.style && a.proses && !a.synced)
       .map(a => ({ 'TANGGAL': a.tanggal, 'LINE': a.line, 'NO. ABSEN': a.noAbsen, 'NAMA': a.nama, 'STYLE': a.style, 'PROSES': a.proses }));
     if(assignRows.length) await gasPost('syncAssignment', assignRows);
     if(pendingDeleteAssign.length){ await gasPost('deleteAssignment', pendingDeleteAssign); pendingDeleteAssign = []; storeSet('kap_pendingDeleteAssign', pendingDeleteAssign, true); }
 
-    const kapRows = kapasitas.map(k => {
+    const kapRowsSource = kapasitas.filter(k => !k.synced);
+    const kapRows = kapRowsSource.map(k => {
       const {rata} = computeRata(k.outputs);
       const effPercent = (rata!==null && k.smv) ? (rata/k.smv*100) : null;
       const effDecimal = (rata!==null && k.smv) ? (rata/k.smv) : '';
@@ -1897,6 +1906,20 @@ document.getElementById('kapDate').addEventListener('change', renderKapasitasTab
 document.getElementById('kapLine').addEventListener('change', renderKapasitasTable);
 document.getElementById('kapSearch').addEventListener('input', renderKapasitasTable);
 document.getElementById('sumSkillDate').addEventListener('change', renderSummarySection2);
+document.getElementById('sumRefreshBtn').addEventListener('click', async ()=>{
+  const msg = document.getElementById('sumRefreshMsg');
+  msg.textContent = 'Memuat ulang...';
+  try{
+    await pullExistingData();
+    excludePendingDeletes();
+    bestPerformanceCache = null;
+    catatanEvaluasiCache = null;
+    renderSummaryTab();
+    msg.textContent = 'Terbaru per ' + new Date().toLocaleTimeString('id-ID');
+  }catch(e){
+    msg.textContent = 'Gagal memuat ulang: ' + e.message;
+  }
+});
 
 document.getElementById('toggleCopyPanelBtn').addEventListener('click', ()=>{
   const panel = document.getElementById('copyPanel');
@@ -1970,6 +1993,7 @@ async function init(){
     excludePendingDeletes();
     renderAssignmentTable();
     renderKapasitasTable();
+    if(getActiveTab()==='summary') renderSummaryTab();
     if(pendingDeleteAssign.length || pendingDeleteKap.length){
       syncNow();
     }
