@@ -70,14 +70,14 @@
   .dash-empty{color:var(--text-dim);}
   .dash-today{outline:1px solid var(--accent);}
 
-  .layout{display:flex;gap:16px;align-items:flex-start;}
-  .sidebar{width:210px;flex-shrink:0;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:10px;}
-  .sidebar button{width:100%;display:flex;align-items:center;gap:10px;text-align:left;background:transparent;border:none;color:var(--text-dim);padding:11px 12px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;margin-bottom:3px;}
+  .layout{display:block;}
+  .sidebar{width:100%;display:flex;flex-wrap:wrap;gap:6px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:8px;margin-bottom:14px;}
+  .sidebar button{width:auto;display:flex;align-items:center;gap:8px;text-align:left;background:transparent;border:none;color:var(--text-dim);padding:9px 14px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;}
   .sidebar button .side-icon{font-size:15px;width:18px;text-align:center;}
   .sidebar button.active{background:var(--accent-soft);color:var(--accent);font-weight:600;}
   .sidebar button:hover:not(.active){background:var(--panel2);color:var(--text);}
-  .sidebar hr{border:none;border-top:1px solid var(--border);margin:8px 4px;}
-  .main-content{flex:1;min-width:0;}
+  .sidebar hr{border:none;border-left:1px solid var(--border);margin:4px 4px;width:0;align-self:stretch;}
+  .main-content{width:100%;min-width:0;}
 
   @media (max-width: 768px){
     .layout{flex-direction:column;}
