@@ -1521,6 +1521,7 @@ function renderSummarySection3(rows, dateStr, area){
     const eff = Number(r['EFF']);
     if(isNaN(eff)) return;
     const kat = kategoriEfisiensi(eff);
+    if(eff===0) return;
     if(kat!=='Belajar' && kat!=='Bisa') return;
     const line = r['LINE'] || '-';
     const item = {
