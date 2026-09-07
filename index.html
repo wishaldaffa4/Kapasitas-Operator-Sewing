@@ -1552,28 +1552,12 @@ function renderSummarySection3(rows, dateStr, area){
         bestPerCategory[p] = item;
       }
     });
-    const summaryRows = categoryLabels.map((label,idx)=>{
-      const item = bestPerCategory[idx];
-      if(!item) return '';
-      return `
-        <div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;">
-          <span><b>${label}</b>: ${item.nama} (${item.noAbsen}) — ${item.proses}</span>
-          <span class="eff-pill ${item.kat==='Belajar'?'eff-bad':'eff-warn'}">${item.kat} ${item.eff.toFixed(1)}%</span>
-        </div>
-      `;
-    }).join('');
-    const summaryHtml = summaryRows
-      ? `<div style="background:var(--panel2);border:1px solid var(--accent);border-radius:8px;padding:8px 10px;margin-bottom:10px;">
-          <div style="font-weight:600;color:var(--accent);margin-bottom:4px;font-size:12px;">📌 Kesimpulan Line ${line} — panggil untuk pembinaan:</div>
-          ${summaryRows}
-        </div>`
-      : '';
-
-    const tableRows = items.map(o=>{
+    function buildRowTr(o, extraLabel){
       const capacity100 = lookupSmv(o.style, o.proses);
       const rataDisplay = (o.rata!=='' && !isNaN(Number(o.rata))) ? Math.round(Number(o.rata)) : '-';
       return `
         <tr>
+          ${extraLabel!==undefined ? `<td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;font-weight:600;color:var(--accent);">${extraLabel}</td>` : ''}
           <td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;">${fmtDate(dateStr)}</td>
           <td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;">${o.noAbsen}</td>
           <td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;">${o.nama}</td>
@@ -1586,7 +1570,38 @@ function renderSummarySection3(rows, dateStr, area){
           <td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;text-align:center;">${o.levelSkill || '-'}</td>
         </tr>
       `;
+    }
+
+    const summaryTableRows = categoryLabels.map((label,idx)=>{
+      const item = bestPerCategory[idx];
+      if(!item) return '';
+      return buildRowTr(item, label);
     }).join('');
+    const summaryHtml = summaryTableRows
+      ? `<div style="border:1px solid var(--accent);border-radius:8px;padding:8px 10px;margin-bottom:14px;overflow-x:auto;">
+          <div style="font-weight:600;color:var(--accent);margin-bottom:6px;font-size:12px;">📌 Kesimpulan Line ${line} — panggil untuk pembinaan:</div>
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead>
+              <tr style="background:var(--panel2);">
+                <th style="padding:5px 6px;text-align:left;white-space:nowrap;">Kategori</th>
+                <th style="padding:5px 6px;text-align:left;white-space:nowrap;">Tanggal</th>
+                <th style="padding:5px 6px;text-align:left;white-space:nowrap;">No. Absen</th>
+                <th style="padding:5px 6px;text-align:left;white-space:nowrap;">Nama</th>
+                <th style="padding:5px 6px;text-align:left;white-space:nowrap;">Line</th>
+                <th style="padding:5px 6px;text-align:left;white-space:nowrap;">Style</th>
+                <th style="padding:5px 6px;text-align:left;white-space:nowrap;">Proses</th>
+                <th style="padding:5px 6px;text-align:center;white-space:nowrap;">Rata-rata</th>
+                <th style="padding:5px 6px;text-align:center;white-space:nowrap;">Capacity 100%</th>
+                <th style="padding:5px 6px;text-align:left;white-space:nowrap;">EFF</th>
+                <th style="padding:5px 6px;text-align:center;white-space:nowrap;">Level Skill</th>
+              </tr>
+            </thead>
+            <tbody>${summaryTableRows}</tbody>
+          </table>
+        </div>`
+      : '';
+
+    const tableRows = items.map(o=> buildRowTr(o)).join('');
 
     const tableHtml = `
       <div style="overflow-x:auto;">
