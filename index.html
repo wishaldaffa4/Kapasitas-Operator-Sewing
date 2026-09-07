@@ -1396,27 +1396,40 @@ function renderDonutChart(containerId, data, total){
   el.innerHTML = `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${segments}<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="middle" fill="var(--text)" font-size="22" font-weight="700">${total}</text></svg>`;
 }
 
-function renderSummarySection1(){
+async function renderSummarySection1(){
   const today = todayStr();
   const days=[];
   for(let i=6;i>=0;i--){ const d=new Date(today); d.setDate(d.getDate()-i); days.push(d.toISOString().slice(0,10)); }
+  const startDate = days[0], endDate = days[days.length-1];
 
-  const linesInUse = new Set();
-  const countMap = {};
-  kapasitas.forEach(k=>{
-    if(!days.includes(k.tanggal)) return;
-    const hasOutput = (k.outputs||[]).some(v=>v!=='' && v!=null);
-    if(!hasOutput) return;
-    linesInUse.add(k.line);
-    countMap[k.line] = countMap[k.line]||{};
-    countMap[k.line][k.tanggal] = countMap[k.line][k.tanggal]||new Set();
-    countMap[k.line][k.tanggal].add(k.noAbsen);
-  });
-
-  const linesToShow = LINES.filter(l=>linesInUse.has(l)).concat([...linesInUse].filter(l=>!LINES.includes(l)));
   const head=document.getElementById('sumOpCountHead');
   head.innerHTML = '<th>Line</th>' + days.map(d=>`<th>${fmtDate(d)}</th>`).join('');
   const body=document.getElementById('sumOpCountBody');
+  body.innerHTML = `<tr><td colspan="${days.length+1}" style="text-align:center;color:var(--text-dim);padding:16px;">Memuat dari DATA LOOKER...</td></tr>`;
+
+  let rows;
+  try{
+    rows = await gasGet('getHistoricalByDateRange&start=' + encodeURIComponent(startDate) + '&end=' + encodeURIComponent(endDate));
+  }catch(e){
+    body.innerHTML = `<tr><td colspan="${days.length+1}" style="text-align:center;color:var(--text-dim);padding:16px;">Gagal memuat: ${e.message}</td></tr>`;
+    return;
+  }
+
+  const linesInUse = new Set();
+  const countMap = {};
+  rows.forEach(r=>{
+    const tgl = r['TANGGAL'];
+    if(!days.includes(tgl)) return;
+    const rataVal = r['RATA-RATA'];
+    if(rataVal==='' || isNaN(Number(rataVal))) return;
+    const line = r['LINE'] || '-';
+    linesInUse.add(line);
+    countMap[line] = countMap[line]||{};
+    countMap[line][tgl] = countMap[line][tgl]||new Set();
+    countMap[line][tgl].add(r['NO. ABSEN']);
+  });
+
+  const linesToShow = LINES.filter(l=>linesInUse.has(l)).concat([...linesInUse].filter(l=>!LINES.includes(l)));
   if(linesToShow.length===0){
     body.innerHTML = `<tr><td colspan="${days.length+1}" style="text-align:center;color:var(--text-dim);padding:16px;">Belum ada data output pada rentang ini.</td></tr>`;
     return;
@@ -1430,22 +1443,42 @@ function renderSummarySection1(){
   }).join('');
 }
 
-function renderSummarySection2(){
+async function renderSummarySection2(){
   const dateInput = document.getElementById('sumSkillDate');
   if(!dateInput.value){
     dateInput.value = findLastDateWithOutput(todayStr()) || todayStr();
   }
   const dateStr = dateInput.value;
-  const map = operatorLevelSkillOnDate(dateStr);
+  const legend = document.getElementById('sumSkillLegend');
+  legend.innerHTML = '<span class="hint">Memuat dari DATA LOOKER...</span>';
+
+  let rows;
+  try{
+    rows = await gasGet('getHistoricalByDate&date=' + encodeURIComponent(dateStr));
+  }catch(e){
+    legend.innerHTML = `<span class="hint">Gagal memuat: ${e.message}</span>`;
+    renderDonutChart('sumSkillChart', [], 0);
+    return;
+  }
+
+  const map = {};
+  rows.forEach(r=>{
+    const rataVal = r['RATA-RATA'];
+    if(rataVal==='' || isNaN(Number(rataVal))) return;
+    const lvl = Number(r['LEVEL SKILL']);
+    if(isNaN(lvl)) return;
+    const noAbsen = r['NO. ABSEN'];
+    if(map[noAbsen]===undefined || lvl > map[noAbsen]) map[noAbsen] = lvl;
+  });
+
   const counts = {};
-  Object.values(map).forEach(o=>{ counts[o.maxLevel] = (counts[o.maxLevel]||0)+1; });
+  Object.values(map).forEach(lvl=>{ counts[lvl] = (counts[lvl]||0)+1; });
   const levels = Object.keys(counts).map(Number).sort((a,b)=>a-b);
   const total = Object.values(counts).reduce((a,b)=>a+b,0);
   const colors = ['#4d9fff','#3ecf8e','#e0a72e','#e0554e','#a78bfa','#f472b6'];
   const data = levels.map((lv,i)=>({ label:'Level '+lv, value:counts[lv], color:colors[i%colors.length] }));
 
   renderDonutChart('sumSkillChart', data, total);
-  const legend = document.getElementById('sumSkillLegend');
   if(total===0){
     legend.innerHTML = '<span class="hint">Tidak ada data operator pada tanggal ini.</span>';
   }else{
@@ -1712,13 +1745,15 @@ async function renderSummarySection4(){
   const empty = document.getElementById('sumPerformEmpty');
 
   const qualifyingOps = dataOpt.filter(o=>{
-    const n = Number(o['SISA WAKTU PENETAPAN (BULAN)']);
-    return !isNaN(n) && n > 0 && n <= 24;
+    const raw = o['SISA WAKTU PENETAPAN (BULAN)'];
+    if(raw===undefined || raw===null || String(raw).trim()==='') return false;
+    const n = Number(raw);
+    return !isNaN(n) && n >= 0 && n <= 24;
   });
   if(qualifyingOps.length===0){
     tbody.innerHTML='';
     empty.style.display='block';
-    empty.textContent='Tidak ada operator dengan sisa penetapan 1-24 bulan.';
+    empty.textContent='Tidak ada operator dengan sisa penetapan 0-24 bulan.';
     return;
   }
 
@@ -1759,7 +1794,7 @@ async function renderSummarySection4(){
     if(rows.length===0){
       tbody.innerHTML='';
       empty.style.display='block';
-      empty.textContent='Tidak ada operator dengan sisa penetapan 1-24 bulan yang punya data historis.';
+      empty.textContent='Tidak ada operator dengan sisa penetapan 0-24 bulan yang punya data historis.';
       return;
     }
 
