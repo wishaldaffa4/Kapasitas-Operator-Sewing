@@ -238,8 +238,16 @@
     </div>
 
     <div class="panel">
-      <div class="panel-title">3. Kategori Belajar &amp; Bisa per Line (<span id="sumBelajarDateLabel">-</span>)</div>
-      <div class="panel-body" id="sumBelajarBisaArea"></div>
+      <div class="panel-title">3. Kategori Belajar &amp; Bisa per Line (dari DATA LOOKER)</div>
+      <div class="panel-body">
+        <div class="row" style="margin-bottom:12px;">
+          <div class="field"><label>Tanggal</label><input type="date" id="sumHistDate"></div>
+          <div class="field"><label>Filter Line</label><select id="sumHistLineFilter"><option value="">Semua line</option></select></div>
+          <span class="hint" id="sumHistMsg" style="align-self:center;"></span>
+        </div>
+        <div class="hint" style="margin-bottom:10px;">Tanggal &amp; filter Line ini juga dipakai untuk poin 5 di bawah.</div>
+        <div id="sumBelajarBisaArea"></div>
+      </div>
     </div>
 
     <div class="panel">
@@ -254,7 +262,7 @@
     </div>
 
     <div class="panel">
-      <div class="panel-title">5. Jumlah Kapasitas per Proses per Line (<span id="sumKapasitasDateLabel">-</span>)</div>
+      <div class="panel-title">5. Jumlah Kapasitas per Proses per Line (dari DATA LOOKER, tanggal sama dengan poin 3)</div>
       <div class="panel-body" id="sumKapasitasArea"></div>
     </div>
 
@@ -1450,67 +1458,154 @@ function renderSummarySection2(){
   }
 }
 
-function renderSummarySection3(){
-  const dateStr = findLastDateWithOutput(todayStr());
-  document.getElementById('sumBelajarDateLabel').textContent = dateStr ? fmtDate(dateStr) : '-';
-  const area = document.getElementById('sumBelajarBisaArea');
-  if(!dateStr){ area.innerHTML = '<div class="hint">Belum ada data output.</div>'; return; }
+let historicalByDateCache = { date: null, rows: null };
+async function loadHistoricalByDate(dateStr){
+  if(historicalByDateCache.date === dateStr && historicalByDateCache.rows){
+    return historicalByDateCache.rows;
+  }
+  const rows = await gasGet('getHistoricalByDate&date=' + encodeURIComponent(dateStr));
+  historicalByDateCache = { date: dateStr, rows };
+  return rows;
+}
+
+async function renderSection3And5(){
+  const dateInput = document.getElementById('sumHistDate');
+  if(!dateInput.value){
+    dateInput.value = findLastDateWithOutput(todayStr()) || todayStr();
+  }
+  const dateStr = dateInput.value;
+  const lineFilterSel = document.getElementById('sumHistLineFilter');
+  const msg = document.getElementById('sumHistMsg');
+  const area3 = document.getElementById('sumBelajarBisaArea');
+  const area5 = document.getElementById('sumKapasitasArea');
+  msg.textContent = 'Memuat dari DATA LOOKER...';
+
+  let rows;
+  try{
+    rows = await loadHistoricalByDate(dateStr);
+    msg.textContent = `${rows.length} baris ditemukan untuk ${fmtDate(dateStr)}.`;
+  }catch(e){
+    msg.textContent = 'Gagal memuat: '+e.message;
+    area3.innerHTML = '<div class="hint">Gagal memuat data dari DATA LOOKER.</div>';
+    area5.innerHTML = '<div class="hint">Gagal memuat data dari DATA LOOKER.</div>';
+    return;
+  }
+
+  const currentLineVal = lineFilterSel.value;
+  const linesAvailable = [...new Set(rows.map(r=>r['LINE']).filter(Boolean))].sort();
+  lineFilterSel.innerHTML = '<option value="">Semua line</option>' + linesAvailable.map(l=>`<option value="${l}">${l}</option>`).join('');
+  if(linesAvailable.includes(currentLineVal)) lineFilterSel.value = currentLineVal;
+
+  const lineFilter = lineFilterSel.value;
+  const filteredRows = lineFilter ? rows.filter(r=>r['LINE']===lineFilter) : rows;
+
+  renderSummarySection3(filteredRows, dateStr, area3);
+  renderSummarySection5(filteredRows, dateStr, area5);
+}
+
+function prosesPriority_(proses){
+  const p = (proses||'').toUpperCase();
+  if(p.includes('IBU JARI')) return 0;
+  if(p.includes('ELASTIC')) return 1;
+  if(p.includes('MACHI')) return 2;
+  if(p.includes('LIPAT')) return 3;
+  if(p.includes('PITA')) return 4;
+  return 5;
+}
+
+function renderSummarySection3(rows, dateStr, area){
+  if(!rows.length){ area.innerHTML = '<div class="hint">Tidak ada data di DATA LOOKER untuk tanggal ini.</div>'; return; }
 
   const byLine = {};
-  kapasitas.forEach(k=>{
-    if(k.tanggal!==dateStr) return;
-    const {rata} = computeRata(k.outputs);
-    if(rata===null || !k.smv) return;
-    const eff = rata/k.smv*100;
+  rows.forEach(r=>{
+    const eff = Number(r['EFF']);
+    if(isNaN(eff)) return;
     const kat = kategoriEfisiensi(eff);
     if(kat!=='Belajar' && kat!=='Bisa') return;
-    byLine[k.line] = byLine[k.line]||[];
-    byLine[k.line].push({ nama:k.nama, noAbsen:k.noAbsen, proses:k.proses, kat, eff });
+    const line = r['LINE'] || '-';
+    const item = { nama:r['NAMA'], noAbsen:r['NO. ABSEN'], proses:r['PROSES'], kat, eff };
+    byLine[line] = byLine[line]||[];
+    byLine[line].push(item);
   });
 
   const lines = Object.keys(byLine).sort();
   if(lines.length===0){ area.innerHTML = '<div class="hint">Tidak ada operator kategori Belajar/Bisa pada tanggal ini.</div>'; return; }
 
+  const categoryLabels = ['Ibu Jari','Elastic','Machi','Lipat','Pita'];
+
   area.innerHTML = lines.map(line=>{
-    const items = byLine[line];
-    const rows = items.map(o=>`
+    const items = byLine[line].slice().sort((a,b)=>{
+      const pa = prosesPriority_(a.proses), pb = prosesPriority_(b.proses);
+      if(pa !== pb) return pa - pb;
+      return a.eff - b.eff;
+    });
+
+    const bestPerCategory = {};
+    items.forEach(item=>{
+      const p = prosesPriority_(item.proses);
+      if(p > 4) return;
+      if(!bestPerCategory[p] || item.eff < bestPerCategory[p].eff){
+        bestPerCategory[p] = item;
+      }
+    });
+    const summaryRows = categoryLabels.map((label,idx)=>{
+      const item = bestPerCategory[idx];
+      if(!item) return '';
+      return `
+        <div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;">
+          <span><b>${label}</b>: ${item.nama} (${item.noAbsen}) — ${item.proses}</span>
+          <span class="eff-pill ${item.kat==='Belajar'?'eff-bad':'eff-warn'}">${item.kat} ${item.eff.toFixed(1)}%</span>
+        </div>
+      `;
+    }).join('');
+    const summaryHtml = summaryRows
+      ? `<div style="background:var(--panel2);border:1px solid var(--accent);border-radius:8px;padding:8px 10px;margin-bottom:10px;">
+          <div style="font-weight:600;color:var(--accent);margin-bottom:4px;font-size:12px;">📌 Kesimpulan Line ${line} — panggil untuk pembinaan:</div>
+          ${summaryRows}
+        </div>`
+      : '';
+
+    const itemRows = items.map(o=>`
       <div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12.5px;">
         <span>${o.nama} (${o.noAbsen}) — ${o.proses}</span>
         <span class="eff-pill ${o.kat==='Belajar'?'eff-bad':'eff-warn'}">${o.kat} ${o.eff.toFixed(1)}%</span>
       </div>
     `).join('');
-    return `<div style="margin-bottom:16px;"><div style="font-weight:600;color:var(--accent);margin-bottom:6px;">${line} (${items.length} operator)</div>${rows}</div>`;
+
+    return `<div style="margin-bottom:20px;">
+      <div style="font-weight:600;color:var(--accent);margin-bottom:6px;">${line} (${items.length} operator)</div>
+      ${summaryHtml}
+      ${itemRows}
+    </div>`;
   }).join('');
 }
 
-function renderSummarySection5(){
-  const dateStr = findLastDateWithOutput(todayStr());
-  document.getElementById('sumKapasitasDateLabel').textContent = dateStr ? fmtDate(dateStr) : '-';
-  const area = document.getElementById('sumKapasitasArea');
-  if(!dateStr){ area.innerHTML = '<div class="hint">Belum ada data output.</div>'; return; }
+function renderSummarySection5(rows, dateStr, area){
+  if(!rows.length){ area.innerHTML = '<div class="hint">Tidak ada data di DATA LOOKER untuk tanggal ini.</div>'; return; }
 
   const byLine = {};
-  kapasitas.forEach(k=>{
-    if(k.tanggal!==dateStr) return;
-    const {rata} = computeRata(k.outputs);
-    if(rata===null) return;
-    byLine[k.line] = byLine[k.line]||{};
-    byLine[k.line][k.proses] = byLine[k.line][k.proses]||[];
-    byLine[k.line][k.proses].push({ nama:k.nama, noAbsen:k.noAbsen, rata });
+  rows.forEach(r=>{
+    const rata = Number(r['RATA-RATA']);
+    if(isNaN(rata) || r['RATA-RATA']==='') return;
+    const line = r['LINE'] || '-';
+    const proses = r['PROSES'] || '-';
+    byLine[line] = byLine[line]||{};
+    byLine[line][proses] = byLine[line][proses]||[];
+    byLine[line][proses].push({ nama:r['NAMA'], noAbsen:r['NO. ABSEN'], rata });
   });
 
   const lines = Object.keys(byLine).sort();
-  if(lines.length===0){ area.innerHTML = '<div class="hint">Tidak ada data output pada tanggal ini.</div>'; return; }
+  if(lines.length===0){ area.innerHTML = '<div class="hint">Tidak ada data rata-rata pada tanggal ini.</div>'; return; }
 
   area.innerHTML = lines.map(line=>{
     const prosesMap = byLine[line];
     const prosesRows = Object.keys(prosesMap).sort().map(proses=>{
       const ops = prosesMap[proses];
       const total = ops.reduce((a,b)=>a+b.rata,0);
-      const detail = ops.length>1 ? ops.map(o=>`${o.nama}: ${o.rata}`).join(', ') : '';
+      const detail = ops.length>1 ? ops.map(o=>`${o.nama}: ${Math.round(o.rata)}`).join(', ') : '';
       return `
         <div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12.5px;">
-          <div style="display:flex;justify-content:space-between;gap:10px;"><b>${proses}</b><span>Total: <b>${total}</b> (${ops.length} operator)</span></div>
+          <div style="display:flex;justify-content:space-between;gap:10px;"><b>${proses}</b><span>Total: <b>${Math.round(total)}</b> (${ops.length} operator)</span></div>
           ${detail?`<div class="hint" style="margin-top:2px;">${detail}</div>`:''}
         </div>
       `;
@@ -1666,8 +1761,7 @@ async function renderSummarySection4(){
 function renderSummaryTab(){
   renderSummarySection1();
   renderSummarySection2();
-  renderSummarySection3();
-  renderSummarySection5();
+  renderSection3And5();
   renderSummarySection4();
 }
 
@@ -1906,6 +2000,8 @@ document.getElementById('kapDate').addEventListener('change', renderKapasitasTab
 document.getElementById('kapLine').addEventListener('change', renderKapasitasTable);
 document.getElementById('kapSearch').addEventListener('input', renderKapasitasTable);
 document.getElementById('sumSkillDate').addEventListener('change', renderSummarySection2);
+document.getElementById('sumHistDate').addEventListener('change', renderSection3And5);
+document.getElementById('sumHistLineFilter').addEventListener('change', renderSection3And5);
 document.getElementById('sumRefreshBtn').addEventListener('click', async ()=>{
   const msg = document.getElementById('sumRefreshMsg');
   msg.textContent = 'Memuat ulang...';
@@ -1914,6 +2010,7 @@ document.getElementById('sumRefreshBtn').addEventListener('click', async ()=>{
     excludePendingDeletes();
     bestPerformanceCache = null;
     catatanEvaluasiCache = null;
+    historicalByDateCache = { date: null, rows: null };
     renderSummaryTab();
     msg.textContent = 'Terbaru per ' + new Date().toLocaleTimeString('id-ID');
   }catch(e){
