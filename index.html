@@ -1505,9 +1505,10 @@ async function renderSection3And5(){
 
 function prosesPriority_(proses){
   const p = (proses||'').toUpperCase();
-  if(p.includes('IBU JARI')) return 0;
+  const ibuJariVariants = ['J. IBU JARI JARUM 1','J. IBU JARI JARUM 2','J. IBU JARI'];
+  if(ibuJariVariants.some(v=>p.includes(v))) return 0;
   if(p.includes('ELASTIC')) return 1;
-  if(p.includes('MACHI')) return 2;
+  if(p.trim()==='J. MACHI') return 2;
   if(p.includes('LIPAT')) return 3;
   if(p.includes('PITA')) return 4;
   return 5;
