@@ -1523,7 +1523,10 @@ function renderSummarySection3(rows, dateStr, area){
     const kat = kategoriEfisiensi(eff);
     if(kat!=='Belajar' && kat!=='Bisa') return;
     const line = r['LINE'] || '-';
-    const item = { nama:r['NAMA'], noAbsen:r['NO. ABSEN'], proses:r['PROSES'], kat, eff };
+    const item = {
+      nama:r['NAMA'], noAbsen:r['NO. ABSEN'], proses:r['PROSES'], style:r['STYLE'],
+      rata:r['RATA-RATA'], levelSkill:r['LEVEL SKILL'], kat, eff
+    };
     byLine[line] = byLine[line]||[];
     byLine[line].push(item);
   });
@@ -1565,17 +1568,51 @@ function renderSummarySection3(rows, dateStr, area){
         </div>`
       : '';
 
-    const itemRows = items.map(o=>`
-      <div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12.5px;">
-        <span>${o.nama} (${o.noAbsen}) — ${o.proses}</span>
-        <span class="eff-pill ${o.kat==='Belajar'?'eff-bad':'eff-warn'}">${o.kat} ${o.eff.toFixed(1)}%</span>
+    const tableRows = items.map(o=>{
+      const capacity100 = lookupSmv(o.style, o.proses);
+      const rataDisplay = (o.rata!=='' && !isNaN(Number(o.rata))) ? Math.round(Number(o.rata)) : '-';
+      return `
+        <tr>
+          <td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;">${fmtDate(dateStr)}</td>
+          <td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;">${o.noAbsen}</td>
+          <td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;">${o.nama}</td>
+          <td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;">${line}</td>
+          <td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;">${o.style}</td>
+          <td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;">${o.proses}</td>
+          <td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;text-align:center;">${rataDisplay}</td>
+          <td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;text-align:center;">${capacity100 || '-'}</td>
+          <td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;"><span class="eff-pill ${o.kat==='Belajar'?'eff-bad':'eff-warn'}">${o.kat} ${o.eff.toFixed(1)}%</span></td>
+          <td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;text-align:center;">${o.levelSkill || '-'}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const tableHtml = `
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead>
+            <tr style="background:var(--panel2);">
+              <th style="padding:5px 6px;text-align:left;white-space:nowrap;">Tanggal</th>
+              <th style="padding:5px 6px;text-align:left;white-space:nowrap;">No. Absen</th>
+              <th style="padding:5px 6px;text-align:left;white-space:nowrap;">Nama</th>
+              <th style="padding:5px 6px;text-align:left;white-space:nowrap;">Line</th>
+              <th style="padding:5px 6px;text-align:left;white-space:nowrap;">Style</th>
+              <th style="padding:5px 6px;text-align:left;white-space:nowrap;">Proses</th>
+              <th style="padding:5px 6px;text-align:center;white-space:nowrap;">Rata-rata</th>
+              <th style="padding:5px 6px;text-align:center;white-space:nowrap;">Capacity 100%</th>
+              <th style="padding:5px 6px;text-align:left;white-space:nowrap;">EFF</th>
+              <th style="padding:5px 6px;text-align:center;white-space:nowrap;">Level Skill</th>
+            </tr>
+          </thead>
+          <tbody>${tableRows}</tbody>
+        </table>
       </div>
-    `).join('');
+    `;
 
     return `<div style="margin-bottom:20px;">
       <div style="font-weight:600;color:var(--accent);margin-bottom:6px;">${line} (${items.length} operator)</div>
       ${summaryHtml}
-      ${itemRows}
+      ${tableHtml}
     </div>`;
   }).join('');
 }
