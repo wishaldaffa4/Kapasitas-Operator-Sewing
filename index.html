@@ -430,7 +430,7 @@ async function pullExistingData(){
       style: r['STYLE'] || '',
       proses: r['PROSES'] || '',
       smv: Number(r['SMV']) || 0,
-      outputs: [1,2,3,4,5,6,7,8,9].map(i => r['OUTPUT JAM '+i] === '' || r['OUTPUT JAM '+i]===undefined ? '' : Number(r['OUTPUT JAM '+i])),
+      outputs: [1,2,3,4,5,6,7,8,9].map(i => r['OUTPUT JAM KE '+i] === '' || r['OUTPUT JAM KE '+i]===undefined ? '' : Number(r['OUTPUT JAM KE '+i])),
       synced: true
     }));
     storeSet('kap_assignments', assignments, true);
