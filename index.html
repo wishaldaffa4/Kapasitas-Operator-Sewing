@@ -1509,7 +1509,7 @@ function prosesPriority_(proses){
   if(ibuJariVariants.some(v=>p.includes(v))) return 0;
   if(p.includes('ELASTIC')) return 1;
   if(p.trim()==='J. MACHI') return 2;
-  if(p.includes('LIPAT')) return 3;
+  if(p.trim()==='J. LIPAT') return 3;
   if(p.includes('PITA')) return 4;
   return 5;
 }
