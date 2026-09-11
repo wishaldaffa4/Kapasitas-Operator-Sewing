@@ -292,6 +292,7 @@
           <div class="field"><label>Line</label><select id="kapLine"></select></div>
           <div class="field" style="flex:1;min-width:200px;"><label>Cari</label><input type="text" id="kapSearch" placeholder="Cari nama / no. absen / proses" style="width:100%;"></div>
           <div class="field"><label>&nbsp;</label><button class="secondary" id="addAdhocBtn">+ Tambah operator</button></div>
+          <div class="field"><label>&nbsp;</label><button class="danger" id="openKapDedupBtn" style="border:1px solid var(--bad);">Bersihkan duplikat</button></div>
           <div class="field"><label>&nbsp;</label><button id="saveKapBtn">💾 Simpan &amp; cetak ke Sheets</button></div>
           <span class="hint" id="kapSaveMsg"></span>
         </div>
@@ -675,7 +676,8 @@ function renderAssignmentTable(){
     tr.querySelector('.a-addrow').addEventListener('click', ()=>{
       const noAbsen = tr.getAttribute('data-noabsen');
       const nama = tr.getAttribute('data-nama');
-      assignments.push({ localId: uid(), tanggal: date, noAbsen, nama, line:'', style:'', proses:'', synced:false });
+      const currentLineFilter = document.getElementById('assignLineFilter').value;
+      assignments.push({ localId: uid(), tanggal: date, noAbsen, nama, line: currentLineFilter || '', style:'', proses:'', synced:false });
       storeSet('kap_assignments', assignments, true);
       renderAssignmentTable();
     });
@@ -833,10 +835,28 @@ function saveAssignmentRow(tr){
     assignments.push(existing);
     tr.setAttribute('data-rid', localId);
   }else{
-    const wasComplete = existing.style && existing.proses;
+    const oldStyle = existing.style;
+    const oldProses = existing.proses;
+    const wasComplete = oldStyle && oldProses;
+
     existing.line = line; existing.style = style; existing.proses = proses; existing.synced=false;
-    if(wasComplete && !(style && proses)){
-      queueDeleteAssign({ 'TANGGAL': existing.tanggal, 'NO. ABSEN': existing.noAbsen, 'PROSES': existing.proses });
+
+    const prosesChanged = wasComplete && oldProses !== proses;
+    const becameIncomplete = wasComplete && !(style && proses);
+
+    if(becameIncomplete || prosesChanged){
+      queueDeleteAssign({ 'TANGGAL': existing.tanggal, 'NO. ABSEN': existing.noAbsen, 'PROSES': oldProses });
+    }
+
+    if(prosesChanged && style && proses){
+      const oldKap = kapasitas.find(k=>k.tanggal===existing.tanggal && k.line===existing.line && k.noAbsen===existing.noAbsen && k.proses===oldProses);
+      if(oldKap){
+        oldKap.style = style;
+        oldKap.proses = proses;
+        oldKap.smv = lookupSmv(style, proses);
+        oldKap.synced = false;
+        storeSet('kap_kapasitas', kapasitas, true);
+      }
     }
   }
   storeSet('kap_assignments', assignments, true);
@@ -991,6 +1011,94 @@ function renderKapasitasTable(){
 }
 
 /* ad hoc add operator */
+/* ---------- Bersihkan duplikat (Input Kapasitas) ---------- */
+function openKapDedupModal(){
+  const date = document.getElementById('kapDate').value;
+  const line = document.getElementById('kapLine').value;
+  const relevant = kapasitas.filter(k=>k.tanggal===date && k.line===line);
+  const byOperator = {};
+  relevant.forEach(k=>{
+    byOperator[k.noAbsen] = byOperator[k.noAbsen]||[];
+    byOperator[k.noAbsen].push(k);
+  });
+  const duplicateGroups = Object.entries(byOperator).filter(([nip,arr])=>arr.length>1);
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+
+  if(duplicateGroups.length===0){
+    backdrop.innerHTML = `
+      <div class="modal">
+        <h3>Bersihkan Duplikat Kapasitas</h3>
+        <div class="hint">Tidak ada operator dengan lebih dari satu Style/Proses untuk ${fmtDate(date)}, ${line}.</div>
+        <div class="modal-actions"><button id="kapDedupClose">Tutup</button></div>
+      </div>
+    `;
+    document.getElementById('appRoot').appendChild(backdrop);
+    document.getElementById('kapDedupClose').addEventListener('click', ()=> backdrop.remove());
+    return;
+  }
+
+  const groupsHtml = duplicateGroups.map(([nip, arr], gIdx)=>{
+    const nama = arr[0].nama;
+    const options = arr.map((k,idx)=>{
+      const {rata} = computeRata(k.outputs);
+      return `
+        <label style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px;">
+          <input type="radio" name="kapdedup_${gIdx}" value="${idx}" ${idx===0?'checked':''}>
+          <span>${k.style} — ${k.proses} — Rata-rata: ${rata!==null?rata:'-'} ${k.synced?'':'<span style="color:var(--warn);">(belum sync)</span>'}</span>
+        </label>
+      `;
+    }).join('');
+    return `
+      <div style="margin-bottom:14px;border:1px solid var(--border);border-radius:8px;padding:10px;">
+        <div style="font-weight:600;margin-bottom:6px;">${nama} (${nip}) — pilih yang mau dipertahankan:</div>
+        ${options}
+      </div>
+    `;
+  }).join('');
+
+  backdrop.innerHTML = `
+    <div class="modal" style="width:600px;max-height:80vh;overflow-y:auto;">
+      <h3>Bersihkan Duplikat Kapasitas — ${fmtDate(date)}, ${line}</h3>
+      <div class="hint" style="margin-bottom:10px;">Ditemukan ${duplicateGroups.length} operator dengan lebih dari satu Style/Proses pada tanggal &amp; line ini. Pilih salah satu yang mau dipertahankan per operator, sisanya akan dihapus (dari Kapasitas Harian maupun Assignment).</div>
+      <div id="kapDedupGroups">${groupsHtml}</div>
+      <div class="modal-actions">
+        <button class="secondary" id="kapDedupCancel">Batal</button>
+        <button class="danger" id="kapDedupConfirm" style="background:var(--bad);color:#fff;">Terapkan</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('appRoot').appendChild(backdrop);
+
+  document.getElementById('kapDedupCancel').addEventListener('click', ()=> backdrop.remove());
+  document.getElementById('kapDedupConfirm').addEventListener('click', ()=>{
+    if(!confirm('Yakin hapus entri yang tidak dipilih? Tindakan ini akan tersinkron ke Sheets juga.')) return;
+
+    duplicateGroups.forEach(([nip, arr], gIdx)=>{
+      const selected = document.querySelector(`input[name="kapdedup_${gIdx}"]:checked`);
+      const keepIdx = selected ? Number(selected.value) : 0;
+      arr.forEach((k,idx)=>{
+        if(idx===keepIdx) return;
+        if(k.synced){ queueDeleteKap({ 'ID': k.id }); }
+        kapasitas = kapasitas.filter(x=>x.id!==k.id);
+        const relatedAssign = assignments.find(a=>a.tanggal===date && a.line===line && a.noAbsen===nip && a.proses===k.proses);
+        if(relatedAssign){
+          if(relatedAssign.synced){ queueDeleteAssign({ 'TANGGAL': relatedAssign.tanggal, 'NO. ABSEN': relatedAssign.noAbsen, 'PROSES': relatedAssign.proses }); }
+          assignments = assignments.filter(a=>a.localId!==relatedAssign.localId);
+        }
+      });
+    });
+
+    storeSet('kap_kapasitas', kapasitas, true);
+    storeSet('kap_assignments', assignments, true);
+    backdrop.remove();
+    renderKapasitasTable();
+    renderAssignmentTable();
+    syncNow('kapSaveMsg');
+  });
+}
+
 function openAdhocModal(){
   const date = document.getElementById('kapDate').value;
   const line = document.getElementById('kapLine').value;
@@ -1025,8 +1133,7 @@ function openAdhocModal(){
   document.getElementById('appRoot').appendChild(backdrop);
 
   const dl = document.getElementById('adhocOpList');
-  const alreadyIds = new Set(assignments.filter(a=>a.tanggal===date && a.line===line).map(a=>a.noAbsen));
-  dl.innerHTML = dataOpt.filter(o=>!alreadyIds.has(o['NIP'])).map(o=>`<option value="${o['NAMA']} (${o['NIP']})">`).join('');
+  dl.innerHTML = dataOpt.map(o=>`<option value="${o['NAMA']} (${o['NIP']})">`).join('');
 
   document.getElementById('adhocStyle').addEventListener('input', (e)=>{
     let pdl = document.getElementById('adhocProsesList');
@@ -2302,6 +2409,7 @@ document.getElementById('fillLineBtn').addEventListener('click', ()=> fillColumn
 document.getElementById('fillStyleBtn').addEventListener('click', ()=> fillColumnDown('.a-style'));
 document.getElementById('fillProsesBtn').addEventListener('click', ()=> fillColumnDown('.a-proses'));
 document.getElementById('addAdhocBtn').addEventListener('click', openAdhocModal);
+document.getElementById('openKapDedupBtn').addEventListener('click', openKapDedupModal);
 
 document.getElementById('saveUrlBtn').addEventListener('click', async ()=>{
   config.gasUrl = document.getElementById('gasUrlInput').value.trim();
