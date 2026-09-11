@@ -266,6 +266,21 @@
       <div class="panel-body" id="sumKapasitasArea"></div>
     </div>
 
+    <div class="panel">
+      <div class="panel-title">6. Tren Performansi Operator (dari DATA LOOKER)</div>
+      <div class="panel-body">
+        <div class="row" style="margin-bottom:12px;">
+          <div class="field" style="flex:1;min-width:220px;"><label>No. Absen (pisah koma untuk beberapa orang)</label><input type="text" id="trendNipInput" placeholder="D.16153, D.11878, D.15908" style="width:100%;"></div>
+          <div class="field"><label>Dari tanggal</label><input type="date" id="trendFromDate"></div>
+          <div class="field"><label>Sampai tanggal</label><input type="date" id="trendToDate"></div>
+          <div class="field"><label>&nbsp;</label><button id="trendShowBtn">Tampilkan Tren</button></div>
+        </div>
+        <div class="hint" id="trendMsg"></div>
+        <div id="trendChart" style="margin-top:10px;overflow-x:auto;"></div>
+        <div id="trendSummaryArea"></div>
+      </div>
+    </div>
+
   </div>
 
   <!-- TAB: KAPASITAS -->
@@ -1492,11 +1507,22 @@ async function renderSummarySection2(){
 }
 
 let historicalByDateCache = { date: null, rows: null };
+function dedupeHistoricalRows(rows){
+  const seen = new Set();
+  return rows.filter(r=>{
+    const key = `${r['NO. ABSEN']}||${r['STYLE']}||${r['PROSES']}||${r['RATA-RATA']}||${r['EFF']}`;
+    if(seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 async function loadHistoricalByDate(dateStr){
   if(historicalByDateCache.date === dateStr && historicalByDateCache.rows){
     return historicalByDateCache.rows;
   }
-  const rows = await gasGet('getHistoricalByDate&date=' + encodeURIComponent(dateStr));
+  const rawRows = await gasGet('getHistoricalByDate&date=' + encodeURIComponent(dateStr));
+  const rows = dedupeHistoricalRows(rawRows);
   historicalByDateCache = { date: dateStr, rows };
   return rows;
 }
@@ -1847,6 +1873,147 @@ async function renderSummarySection4(){
   }
 }
 
+function renderTrendChart(containerId, series, dates){
+  const width=680, height=260, padding={left:44,right:20,top:16,bottom:36};
+  const plotW = width - padding.left - padding.right;
+  const plotH = height - padding.top - padding.bottom;
+  const allVals = series.flatMap(s=>s.values.filter(v=>v!==null));
+  const maxVal = allVals.length ? Math.max(100, ...allVals) * 1.05 : 100;
+
+  function x(i){ return padding.left + (dates.length<=1 ? plotW/2 : (i/(dates.length-1))*plotW); }
+  function y(v){ return padding.top + plotH - (v/maxVal)*plotH; }
+
+  let svg = `<svg width="100%" viewBox="0 0 ${width} ${height}" style="max-width:${width}px;">`;
+  svg += `<line x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${height-padding.bottom}" stroke="var(--border)"/>`;
+  svg += `<line x1="${padding.left}" y1="${height-padding.bottom}" x2="${width-padding.right}" y2="${height-padding.bottom}" stroke="var(--border)"/>`;
+
+  dates.forEach((d,i)=>{
+    if(dates.length>10 && i%2!==0) return; // biar tidak terlalu padat kalau rentangnya panjang
+    svg += `<text x="${x(i)}" y="${height-padding.bottom+16}" font-size="9" fill="var(--text-dim)" text-anchor="middle">${fmtDate(d).slice(0,5)}</text>`;
+  });
+  const yStep = maxVal>150 ? 50 : 25;
+  for(let v=0; v<=maxVal; v+=yStep){
+    svg += `<text x="${padding.left-6}" y="${y(v)+3}" font-size="9" fill="var(--text-dim)" text-anchor="end">${v}</text>`;
+    svg += `<line x1="${padding.left}" y1="${y(v)}" x2="${width-padding.right}" y2="${y(v)}" stroke="var(--border)" stroke-dasharray="2,3"/>`;
+  }
+
+  series.forEach(s=>{
+    let path='';
+    s.values.forEach((v,i)=>{
+      if(v===null) return;
+      path += (path===''?'M':'L') + x(i).toFixed(1) + ' ' + y(v).toFixed(1) + ' ';
+    });
+    if(path) svg += `<path d="${path}" fill="none" stroke="${s.color}" stroke-width="2.5"/>`;
+    s.values.forEach((v,i)=>{
+      if(v===null) return;
+      svg += `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="3.5" fill="${s.color}"/>`;
+    });
+  });
+  svg += `</svg>`;
+  document.getElementById(containerId).innerHTML = svg || '<div class="hint">Tidak ada data untuk ditampilkan.</div>';
+}
+
+async function renderOperatorTrend(){
+  const nipInput = document.getElementById('trendNipInput').value.trim();
+  const fromDate = document.getElementById('trendFromDate').value;
+  const toDate = document.getElementById('trendToDate').value;
+  const msg = document.getElementById('trendMsg');
+  const chartArea = document.getElementById('trendChart');
+  const summaryArea = document.getElementById('trendSummaryArea');
+
+  if(!nipInput || !fromDate || !toDate){
+    msg.textContent = 'Isi No. Absen (pisah koma) dan rentang tanggal dulu.';
+    return;
+  }
+  const nips = nipInput.split(',').map(s=>s.trim()).filter(Boolean);
+  msg.textContent = 'Memuat dari DATA LOOKER...';
+  chartArea.innerHTML=''; summaryArea.innerHTML='';
+
+  let rows;
+  try{
+    rows = await gasGet('getHistoricalByDateRange&start=' + encodeURIComponent(fromDate) + '&end=' + encodeURIComponent(toDate));
+  }catch(e){
+    msg.textContent = 'Gagal memuat: '+e.message;
+    return;
+  }
+
+  const dates=[];
+  let cur = new Date(fromDate);
+  const end = new Date(toDate);
+  while(cur<=end){ dates.push(cur.toISOString().slice(0,10)); cur.setDate(cur.getDate()+1); }
+
+  const colors=['#4d9fff','#3ecf8e','#e0a72e','#e0554e','#a78bfa','#f472b6'];
+  const seriesData=[];
+  const summaryRows=[];
+
+  nips.forEach((nip,idx)=>{
+    const opRows = rows.filter(r=>r['NO. ABSEN']===nip);
+    const nama = opRows.length ? opRows[0]['NAMA'] : nip;
+
+    const byDate={};
+    opRows.forEach(r=>{
+      const eff = Number(r['EFF']);
+      if(isNaN(eff)) return;
+      byDate[r['TANGGAL']] = byDate[r['TANGGAL']]||[];
+      byDate[r['TANGGAL']].push(eff);
+    });
+    const values = dates.map(d=>{
+      if(!byDate[d]) return null;
+      const arr=byDate[d];
+      return arr.reduce((a,b)=>a+b,0)/arr.length;
+    });
+    seriesData.push({ label:`${nama} (${nip})`, color:colors[idx%colors.length], values });
+
+    const validPoints = values.map((v,i)=>({v,i})).filter(p=>p.v!==null);
+    let kenaikanText = 'Tidak ada data pada rentang ini';
+    let effAwal=null, effAkhir=null;
+    if(validPoints.length>=1){
+      effAwal = validPoints[0].v;
+      effAkhir = validPoints[validPoints.length-1].v;
+      if(validPoints.length>=2){
+        if(effAwal===0){
+          kenaikanText = `+${(effAkhir-effAwal).toFixed(1)} poin (EFF awal 0%, tidak bisa dihitung dalam %)`;
+        }else{
+          const pct = ((effAkhir-effAwal)/effAwal*100);
+          kenaikanText = `${pct>=0?'+':''}${pct.toFixed(1)}%`;
+        }
+      }else{
+        kenaikanText = 'Cuma ada 1 titik data pada rentang ini, tren tidak bisa dihitung';
+      }
+    }
+    summaryRows.push({ nip, nama, effAwal, effAkhir, kenaikanText });
+  });
+
+  renderTrendChart('trendChart', seriesData, dates);
+
+  summaryArea.innerHTML = `
+    <table style="width:100%;border-collapse:collapse;font-size:12.5px;margin-top:12px;">
+      <thead><tr style="background:var(--panel2);">
+        <th style="padding:6px 8px;text-align:left;">No. Absen</th>
+        <th style="padding:6px 8px;text-align:left;">Nama</th>
+        <th style="padding:6px 8px;text-align:center;">EFF Awal</th>
+        <th style="padding:6px 8px;text-align:center;">EFF Akhir</th>
+        <th style="padding:6px 8px;text-align:left;">Kenaikan</th>
+      </tr></thead>
+      <tbody>
+        ${summaryRows.map((s,idx)=>`
+          <tr>
+            <td style="padding:6px 8px;border-bottom:1px solid var(--border);">
+              <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${colors[idx%colors.length]};margin-right:6px;"></span>
+              ${s.nip}
+            </td>
+            <td style="padding:6px 8px;border-bottom:1px solid var(--border);">${s.nama}</td>
+            <td style="padding:6px 8px;border-bottom:1px solid var(--border);text-align:center;">${s.effAwal!==null?s.effAwal.toFixed(1)+'%':'-'}</td>
+            <td style="padding:6px 8px;border-bottom:1px solid var(--border);text-align:center;">${s.effAkhir!==null?s.effAkhir.toFixed(1)+'%':'-'}</td>
+            <td style="padding:6px 8px;border-bottom:1px solid var(--border);">${s.kenaikanText}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+  msg.textContent = `${rows.length} baris ditemukan pada rentang ${fmtDate(fromDate)} - ${fmtDate(toDate)}.`;
+}
+
 function renderSummaryTab(){
   renderSummarySection1();
   renderSummarySection2();
@@ -2091,6 +2258,7 @@ document.getElementById('kapSearch').addEventListener('input', renderKapasitasTa
 document.getElementById('sumSkillDate').addEventListener('change', renderSummarySection2);
 document.getElementById('sumHistDate').addEventListener('change', renderSection3And5);
 document.getElementById('sumHistLineFilter').addEventListener('change', renderSection3And5);
+document.getElementById('trendShowBtn').addEventListener('click', renderOperatorTrend);
 document.getElementById('sumRefreshBtn').addEventListener('click', async ()=>{
   const msg = document.getElementById('sumRefreshMsg');
   msg.textContent = 'Memuat ulang...';
