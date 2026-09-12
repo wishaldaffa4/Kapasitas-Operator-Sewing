@@ -164,6 +164,7 @@
           <div class="field"><label>&nbsp;</label><button class="secondary" id="openImportBtn">Impor data awal</button></div>
           <div class="field"><label>&nbsp;</label><button class="danger" id="openBulkDeleteBtn" style="border:1px solid var(--bad);">Hapus massal</button></div>
           <div class="field"><label>&nbsp;</label><button class="danger" id="openDedupBtn" style="border:1px solid var(--bad);">Bersihkan duplikat</button></div>
+          <div class="field"><label>&nbsp;</label><button class="danger" id="deleteSelectedAssignBtn" style="border:1px solid var(--bad);">🗑 Hapus yang dipilih</button></div>
           <div class="field"><label>&nbsp;</label><button id="saveAssignBtn">💾 Simpan &amp; cetak ke Sheets</button></div>
           <span class="hint" id="assignSaveMsg"></span>
         </div>
@@ -196,6 +197,7 @@
       <div class="table-wrap">
         <table class="data-table">
           <thead><tr>
+            <th><input type="checkbox" id="assignSelectAll" title="Pilih semua"></th>
             <th>No. Absen</th><th>Nama</th>
             <th>Line <button class="secondary small" id="fillLineBtn" title="Isi sama ke semua baris di bawah" style="padding:2px 6px;">Isi ke bawah</button></th>
             <th>Style <button class="secondary small" id="fillStyleBtn" title="Isi sama ke semua baris di bawah" style="padding:2px 6px;">Isi ke bawah</button></th>
@@ -611,6 +613,7 @@ function renderAssignmentTable(){
     const prosesDlId = 'proses_assign_'+idx;
     return `
       <tr data-rid="${rid}" data-noabsen="${r.noAbsen}" data-nama="${(r.nama||'').replace(/"/g,'&quot;')}">
+        <td data-label="Pilih">${r.localId ? '<input type="checkbox" class="a-select">' : ''}</td>
         <td data-label="No. Absen">${r.noAbsen}</td>
         <td class="col-nama" data-label="Nama" title="${r.nama}">${r.nama}</td>
         <td data-label="Line">
@@ -684,6 +687,36 @@ function renderAssignmentTable(){
       renderAssignmentTable();
     });
   });
+
+  const assignSelectAllCb = document.getElementById('assignSelectAll');
+  if(assignSelectAllCb){
+    assignSelectAllCb.checked = false;
+    assignSelectAllCb.addEventListener('change', ()=>{
+      tbody.querySelectorAll('.a-select').forEach(cb=> cb.checked = assignSelectAllCb.checked);
+    });
+  }
+}
+
+function deleteSelectedAssignRows(){
+  const checked = [...document.querySelectorAll('#assignBody .a-select:checked')];
+  if(checked.length===0){
+    alert('Belum ada operator yang dipilih. Centang dulu di kolom paling kiri.');
+    return;
+  }
+  const rids = checked.map(cb=> cb.closest('tr').getAttribute('data-rid'));
+  const targets = assignments.filter(a=> rids.includes(a.localId));
+  const names = targets.map(a=> `${a.nama} — ${a.line||'-'} — ${a.proses||'-'}`);
+  if(!confirm(`Hapus ${targets.length} baris assignment berikut?\n\n${names.join('\n')}`)) return;
+
+  targets.forEach(a=>{
+    if(a.synced){ queueDeleteAssign({ 'TANGGAL': a.tanggal, 'NO. ABSEN': a.noAbsen, 'PROSES': a.proses }); }
+  });
+  const targetIds = new Set(targets.map(a=>a.localId));
+  assignments = assignments.filter(a=> !targetIds.has(a.localId));
+
+  storeSet('kap_assignments', assignments, true);
+  renderAssignmentTable();
+  syncNow('assignSaveMsg');
 }
 
 function openDeleteRangeModal(tr){
@@ -2440,6 +2473,7 @@ document.getElementById('copyLineScope').addEventListener('change', (e)=>{
 document.getElementById('openImportBtn').addEventListener('click', openImportModal);
 document.getElementById('openBulkDeleteBtn').addEventListener('click', openBulkDeleteModal);
 document.getElementById('openDedupBtn').addEventListener('click', openDedupModal);
+document.getElementById('deleteSelectedAssignBtn').addEventListener('click', deleteSelectedAssignRows);
 document.getElementById('applyCopyBtn').addEventListener('click', applyCopyRange);
 document.getElementById('fillLineBtn').addEventListener('click', ()=> fillColumnDown('.a-line'));
 document.getElementById('fillStyleBtn').addEventListener('click', ()=> fillColumnDown('.a-style'));
