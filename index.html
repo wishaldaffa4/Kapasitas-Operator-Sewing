@@ -169,6 +169,11 @@
           <span class="hint" id="assignSaveMsg"></span>
         </div>
         <div class="hint">Tip: copy beberapa baris nilai dari Excel/Google Sheets, lalu paste ke satu sel Style atau Proses — otomatis terisi berurutan ke bawah. Atau pakai tombol "Isi ke bawah" di header kolom untuk menyamakan satu nilai ke semua baris.</div>
+        <div class="row" id="assignStatsRow" style="margin-bottom:0;gap:16px;">
+          <div class="hint" style="font-size:12.5px;">Total operator aktif: <b id="statTotalOp" style="color:var(--text);">-</b></div>
+          <div class="hint" style="font-size:12.5px;">Sudah di-assign: <b id="statAssignedOp" style="color:var(--good);">-</b></div>
+          <div class="hint" style="font-size:12.5px;">Belum di-assign: <b id="statUnassignedOp" style="color:var(--bad);">-</b></div>
+        </div>
         <div id="copyPanel" style="display:none;border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px;background:var(--panel2);">
           <div class="row" style="margin-bottom:0;">
             <div class="field"><label>Dari tanggal (sudah dipilih di atas)</label><input type="text" id="copyFromDisplay" disabled></div>
@@ -575,6 +580,18 @@ function prosesDatalistFor(id, style){
 }
 
 /* ---------- Assignment tab ---------- */
+function renderAssignmentStats(date){
+  const total = dataOpt.length;
+  const assignedNips = new Set(
+    assignments.filter(a=>a.tanggal===date && a.style && a.proses).map(a=>a.noAbsen)
+  );
+  const assignedCount = dataOpt.filter(op=> assignedNips.has(op['NIP'])).length;
+  const unassignedCount = total - assignedCount;
+  document.getElementById('statTotalOp').textContent = total;
+  document.getElementById('statAssignedOp').textContent = assignedCount;
+  document.getElementById('statUnassignedOp').textContent = unassignedCount;
+}
+
 function renderAssignmentTable(){
   ensureDatalists();
   renderAssignmentDashboard();
@@ -585,6 +602,8 @@ function renderAssignmentTable(){
   const empty = document.getElementById('assignEmpty');
 
   if(!dataOpt.length){ tbody.innerHTML=''; empty.style.display='block'; empty.textContent='Belum ada data operator aktif. Cek koneksi di tab Pengaturan.'; return; }
+
+  renderAssignmentStats(date);
 
   // rows for this date: at least one row per active operator, plus extra rows if operator has >1 assignment
   let rows = [];
