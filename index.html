@@ -620,7 +620,10 @@ function renderAssignmentTable(){
   if(search){
     rows = rows.filter(r => `${r.nama} ${r.noAbsen} ${r.proses}`.toLowerCase().includes(search));
   }
-  if(lineFilter){
+  if(lineFilter === '__UNASSIGNED__'){
+    const assignedNipsForDate = new Set(assignments.filter(a=>a.tanggal===date && a.style && a.proses).map(a=>a.noAbsen));
+    rows = rows.filter(r => !assignedNipsForDate.has(r.noAbsen));
+  }else if(lineFilter){
     rows = rows.filter(r => r.line === lineFilter);
   }
 
@@ -932,7 +935,8 @@ function applyCopyRange(){
   const fromDate = document.getElementById('assignDate').value;
   const toDate = document.getElementById('copyToDate').value;
   const scope = document.getElementById('copyLineScope').value;
-  const activeLine = document.getElementById('assignLineFilter').value;
+  const rawLineFilter = document.getElementById('assignLineFilter').value;
+  const activeLine = rawLineFilter === '__UNASSIGNED__' ? '' : rawLineFilter;
   if(!fromDate || !toDate) return;
   if(scope==='active' && !activeLine){
     alert('Pilih dulu Line di filter (atas tabel) sebelum menyalin hanya untuk line aktif.');
@@ -2442,7 +2446,7 @@ function openUnfilledModal(unfilledList, date, line){
 document.getElementById('assignDate').value = todayStr();
 document.getElementById('kapDate').value = todayStr();
 document.getElementById('kapLine').innerHTML = LINES.map(l=>`<option value="${l}">${l}</option>`).join('');
-document.getElementById('assignLineFilter').innerHTML = '<option value="">Semua line</option>' + LINES.map(l=>`<option value="${l}">${l}</option>`).join('');
+document.getElementById('assignLineFilter').innerHTML = '<option value="">Semua line</option><option value="__UNASSIGNED__">⚠ Operator belum di-assign</option>' + LINES.map(l=>`<option value="${l}">${l}</option>`).join('');
 
 document.getElementById('assignDate').addEventListener('change', renderAssignmentTable);
 document.getElementById('assignSearch').addEventListener('input', renderAssignmentTable);
@@ -2473,13 +2477,15 @@ document.getElementById('sumRefreshBtn').addEventListener('click', async ()=>{
 document.getElementById('toggleCopyPanelBtn').addEventListener('click', ()=>{
   const panel = document.getElementById('copyPanel');
   document.getElementById('copyFromDisplay').value = fmtDate(document.getElementById('assignDate').value);
-  const activeLine = document.getElementById('assignLineFilter').value;
+  const rawLineFilter = document.getElementById('assignLineFilter').value;
+  const activeLine = rawLineFilter === '__UNASSIGNED__' ? '' : rawLineFilter;
   const scopeSelect = document.getElementById('copyLineScope');
   scopeSelect.options[1].text = activeLine ? `Line ${activeLine} saja (sesuai filter aktif)` : 'Line aktif saja (pilih Line di filter dulu)';
   panel.style.display = panel.style.display==='none' ? 'block':'none';
 });
 document.getElementById('copyLineScope').addEventListener('change', (e)=>{
-  const activeLine = document.getElementById('assignLineFilter').value;
+  const rawLineFilter2 = document.getElementById('assignLineFilter').value;
+  const activeLine = rawLineFilter2 === '__UNASSIGNED__' ? '' : rawLineFilter2;
   const hint = document.getElementById('copyLineScopeHint');
   if(e.target.value==='active'){
     hint.textContent = activeLine
