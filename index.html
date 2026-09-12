@@ -293,6 +293,7 @@
           <div class="field" style="flex:1;min-width:200px;"><label>Cari</label><input type="text" id="kapSearch" placeholder="Cari nama / no. absen / proses" style="width:100%;"></div>
           <div class="field"><label>&nbsp;</label><button class="secondary" id="addAdhocBtn">+ Tambah operator</button></div>
           <div class="field"><label>&nbsp;</label><button class="danger" id="openKapDedupBtn" style="border:1px solid var(--bad);">Bersihkan duplikat</button></div>
+          <div class="field"><label>&nbsp;</label><button class="danger" id="deleteSelectedKapBtn" style="border:1px solid var(--bad);">🗑 Hapus yang dipilih</button></div>
           <div class="field"><label>&nbsp;</label><button id="saveKapBtn">💾 Simpan &amp; cetak ke Sheets</button></div>
           <span class="hint" id="kapSaveMsg"></span>
         </div>
@@ -304,6 +305,7 @@
         <table class="data-table">
           <thead>
             <tr>
+              <th><input type="checkbox" id="kapSelectAll" title="Pilih semua"></th>
               <th>No. Absen</th><th>Nama</th><th>Style</th><th>Proses</th><th>SMV</th>
               <th>Rata-rata</th><th>EFF</th>
               <th></th>
@@ -945,6 +947,7 @@ function renderKapasitasTable(){
     const outputsCells = k.outputs.map((v,i)=>`<td class="out-td" data-label="J${i+1}"><input type="number" class="out-input k-out" data-idx="${i}" value="${v}"></td>`).join('');
     return `
       <tr data-id="${k.id}">
+        <td data-label="Pilih"><input type="checkbox" class="k-select" data-id="${k.id}"></td>
         <td data-label="No. Absen">${k.noAbsen}</td><td class="col-nama" data-label="Nama" title="${k.nama}">${k.nama}</td>
         <td data-label="Style"><input class="style-input k-style" list="styleList" value="${k.style}"></td>
         <td data-label="Proses"><input class="proses-input k-proses" list="${prosesDlId}" value="${k.proses}"></td>
@@ -1008,6 +1011,39 @@ function renderKapasitasTable(){
       recalcRow();
     });
   });
+
+  const selectAllCb = document.getElementById('kapSelectAll');
+  if(selectAllCb){
+    selectAllCb.checked = false;
+    selectAllCb.addEventListener('change', ()=>{
+      tbody.querySelectorAll('.k-select').forEach(cb=> cb.checked = selectAllCb.checked);
+    });
+  }
+}
+
+function deleteSelectedKapRows(){
+  const checked = [...document.querySelectorAll('#kapBody .k-select:checked')];
+  if(checked.length===0){
+    alert('Belum ada operator yang dipilih. Centang dulu di kolom paling kiri.');
+    return;
+  }
+  const ids = checked.map(cb=>cb.getAttribute('data-id'));
+  const names = ids.map(id=>{
+    const k = kapasitas.find(x=>x.id===id);
+    return k ? `${k.nama} (${k.proses})` : id;
+  });
+  if(!confirm(`Hapus ${ids.length} baris berikut dari Input Kapasitas?\n\n${names.join('\n')}\n\nAssignment operator ini TIDAK ikut terhapus.`)) return;
+
+  ids.forEach(id=>{
+    const k = kapasitas.find(x=>x.id===id);
+    if(k){
+      if(k.synced){ queueDeleteKap({ 'ID': k.id }); }
+      kapasitas = kapasitas.filter(x=>x.id!==id);
+    }
+  });
+  storeSet('kap_kapasitas', kapasitas, true);
+  renderKapasitasTable();
+  syncNow('kapSaveMsg');
 }
 
 /* ad hoc add operator */
@@ -2410,6 +2446,7 @@ document.getElementById('fillStyleBtn').addEventListener('click', ()=> fillColum
 document.getElementById('fillProsesBtn').addEventListener('click', ()=> fillColumnDown('.a-proses'));
 document.getElementById('addAdhocBtn').addEventListener('click', openAdhocModal);
 document.getElementById('openKapDedupBtn').addEventListener('click', openKapDedupModal);
+document.getElementById('deleteSelectedKapBtn').addEventListener('click', deleteSelectedKapRows);
 
 document.getElementById('saveUrlBtn').addEventListener('click', async ()=>{
   config.gasUrl = document.getElementById('gasUrlInput').value.trim();
