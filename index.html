@@ -492,7 +492,12 @@ async function syncNow(evtOrMsgElId){
       const {rata} = computeRata(k.outputs);
       const effPercent = (rata!==null && k.smv) ? (rata/k.smv*100) : null;
       const effDecimal = (rata!==null && k.smv) ? (rata/k.smv) : '';
+      const filledOutputs = (k.outputs||[]).filter(v=>v!=='' && v!=null && !isNaN(v)).map(Number);
+      const maxOutput = filledOutputs.length ? Math.max(...filledOutputs) : '';
+      const minOutput = filledOutputs.length ? Math.min(...filledOutputs) : '';
       const row = { 'ID': k.id, 'TANGGAL': k.tanggal, 'LINE': k.line, 'NO. ABSEN': k.noAbsen, 'NAMA': k.nama, 'STYLE': k.style, 'PROSES': k.proses, 'SMV': k.smv, 'TOTAL': (k.outputs||[]).filter(v=>v!=='' && v!=null).reduce((a,b)=>a+Number(b),0), 'RATA-RATA': rata!==null?rata:'', 'EFF': effDecimal,
+        'MAX': maxOutput,
+        'MIN': minOutput,
         'EVALUASI PENETAPAN (BULAN)': sisaWaktuPenetapan(k.noAbsen),
         'LAMA KERJA (TAHUN)': masaKerjaDisplay(k.noAbsen),
         'KATEGORI EFF': kategoriEfisiensi(effPercent),
