@@ -481,8 +481,13 @@ async function syncNow(evtOrMsgElId){
     // PENTING: hanya kirim baris yang benar-benar berubah sejak sinkron terakhir
     // (synced === false), supaya perangkat lain yang belum menarik data terbaru
     // tidak menimpa balik data yang sudah diubah perangkat lain.
+    // Pengecualian: Line CAD dan REPAIR boleh sync walau Style/Proses masih kosong,
+    // asal Line-nya sudah terisi (line-line lain tetap wajib Style+Proses lengkap).
+    const LINES_ALLOW_EMPTY_STYLE_PROSES = ['CAD', 'REPAIR'];
     const assignRows = assignments
-      .filter(a => a.style && a.proses && !a.synced)
+      .filter(a => !a.synced && a.line && (
+        (a.style && a.proses) || LINES_ALLOW_EMPTY_STYLE_PROSES.includes(a.line)
+      ))
       .map(a => ({ 'TANGGAL': a.tanggal, 'LINE': a.line, 'NO. ABSEN': a.noAbsen, 'NAMA': a.nama, 'STYLE': a.style, 'PROSES': a.proses }));
     if(assignRows.length) await gasPost('syncAssignment', assignRows);
     if(pendingDeleteAssign.length){ await gasPost('deleteAssignment', pendingDeleteAssign); pendingDeleteAssign = []; storeSet('kap_pendingDeleteAssign', pendingDeleteAssign, true); }
@@ -585,10 +590,15 @@ function prosesDatalistFor(id, style){
 }
 
 /* ---------- Assignment tab ---------- */
+const LINES_ALLOW_EMPTY_STYLE_PROSES_FOR_ASSIGNED = ['CAD', 'REPAIR'];
+function isAssignComplete(a){
+  return (a.style && a.proses) || (a.line && LINES_ALLOW_EMPTY_STYLE_PROSES_FOR_ASSIGNED.includes(a.line));
+}
+
 function renderAssignmentStats(date){
   const total = dataOpt.length;
   const assignedNips = new Set(
-    assignments.filter(a=>a.tanggal===date && a.style && a.proses).map(a=>a.noAbsen)
+    assignments.filter(a=>a.tanggal===date && isAssignComplete(a)).map(a=>a.noAbsen)
   );
   const assignedCount = dataOpt.filter(op=> assignedNips.has(op['NIP'])).length;
   const unassignedCount = total - assignedCount;
@@ -626,7 +636,7 @@ function renderAssignmentTable(){
     rows = rows.filter(r => `${r.nama} ${r.noAbsen} ${r.proses}`.toLowerCase().includes(search));
   }
   if(lineFilter === '__UNASSIGNED__'){
-    const assignedNipsForDate = new Set(assignments.filter(a=>a.tanggal===date && a.style && a.proses).map(a=>a.noAbsen));
+    const assignedNipsForDate = new Set(assignments.filter(a=>a.tanggal===date && isAssignComplete(a)).map(a=>a.noAbsen));
     rows = rows.filter(r => !assignedNipsForDate.has(r.noAbsen));
   }else if(lineFilter){
     rows = rows.filter(r => r.line === lineFilter);
