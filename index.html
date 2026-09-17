@@ -69,6 +69,13 @@
   .dash-filled{background:rgba(77,159,255,.12);color:var(--accent);border-radius:4px;}
   .dash-empty{color:var(--text-dim);}
   .dash-today{outline:1px solid var(--accent);}
+  .ms-dropdown{position:relative;}
+  .ms-toggle{width:100%;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .ms-panel{position:absolute;top:calc(100% + 4px);left:0;z-index:60;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:8px;width:260px;max-height:280px;overflow-y:auto;box-shadow:0 8px 20px rgba(0,0,0,.4);}
+  .ms-panel input[type="text"]{width:100%;margin-bottom:6px;}
+  .ms-panel-actions{display:flex;gap:6px;margin-bottom:6px;}
+  .ms-option-label{display:flex;align-items:center;gap:6px;padding:3px 2px;font-size:12.5px;cursor:pointer;border-radius:4px;}
+  .ms-option-label:hover{background:var(--panel);}
 
   .layout{display:block;}
   .sidebar{width:100%;display:flex;flex-wrap:wrap;gap:6px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:8px;margin-bottom:14px;}
@@ -123,6 +130,7 @@
     <button class="active" data-tab="kapasitas"><span class="side-icon">📋</span> Input Kapasitas</button>
     <button data-tab="assignment"><span class="side-icon">🗓️</span> Assignment Operator</button>
     <button data-tab="summary"><span class="side-icon">📈</span> Summary</button>
+    <button data-tab="histori"><span class="side-icon">🕓</span> Histori Kapasitas</button>
     <hr>
     <button data-tab="settings"><span class="side-icon">⚙️</span> Pengaturan</button>
   </aside>
@@ -250,6 +258,7 @@
         <div class="row" style="margin-bottom:12px;">
           <div class="field"><label>Tanggal</label><input type="date" id="sumHistDate"></div>
           <div class="field"><label>Filter Line</label><select id="sumHistLineFilter"><option value="">Semua line</option></select></div>
+          <div class="field"><label>&nbsp;</label><button class="secondary" id="printKesimpulanBtn">🖨️ Print Kesimpulan</button></div>
           <span class="hint" id="sumHistMsg" style="align-self:center;"></span>
         </div>
         <div class="hint" style="margin-bottom:10px;">Tanggal &amp; filter Line ini juga dipakai untuk poin 5 di bawah.</div>
@@ -288,6 +297,33 @@
       </div>
     </div>
 
+  </div>
+
+  <!-- TAB: HISTORI KAPASITAS OPERATOR -->
+  <div id="tab-histori" class="tab-content" style="display:none;">
+    <div class="panel">
+      <div class="panel-title">Histori Kapasitas Operator (dari DATA LOOKER)</div>
+      <div class="panel-body">
+        <div class="row" style="margin-bottom:12px;">
+          <div class="field"><label>Dari tanggal</label><input type="date" id="histFrom"></div>
+          <div class="field"><label>Sampai tanggal</label><input type="date" id="histTo"></div>
+          <div class="field" style="min-width:180px;" id="histNamaMS"></div>
+          <div class="field" style="min-width:180px;" id="histStyleMS"></div>
+          <div class="field" style="min-width:180px;" id="histProsesMS"></div>
+          <div class="field"><label>&nbsp;</label><button id="histShowBtn">Tampilkan</button></div>
+        </div>
+        <div class="hint" id="histMsg"></div>
+        <div class="table-wrap" style="margin-top:10px;">
+          <table class="data-table">
+            <thead><tr>
+              <th>Tanggal</th><th>No. Absen</th><th>Nama</th><th>Line</th><th>Style</th><th>Proses</th>
+              <th>Rata-rata</th><th>Capacity 100%</th><th>EFF</th><th>Kategori</th><th>Level Skill</th>
+            </tr></thead>
+            <tbody id="histBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- TAB: KAPASITAS -->
@@ -1721,6 +1757,78 @@ async function renderSummarySection2(){
 }
 
 let historicalByDateCache = { date: null, rows: null };
+let lastKesimpulanData = { dateStr: null, items: [] };
+
+function printKesimpulan(){
+  if(!lastKesimpulanData.items.length){
+    alert('Belum ada data Kesimpulan untuk diprint. Pastikan poin 3 sudah menampilkan data (pilih tanggal yang ada operator kategori Belajar/Bisa-nya).');
+    return;
+  }
+  const { dateStr, items } = lastKesimpulanData;
+  const rowsHtml = items.map(o=>{
+    const capacity100 = lookupSmv(o.style, o.proses);
+    const rataDisplay = (o.rata!=='' && !isNaN(Number(o.rata))) ? Math.round(Number(o.rata)) : '-';
+    return `
+      <tr>
+        <td>${o.line}</td>
+        <td>${o.label}</td>
+        <td>${o.noAbsen}</td>
+        <td>${o.nama}</td>
+        <td>${o.style}</td>
+        <td>${o.proses}</td>
+        <td style="text-align:center;">${rataDisplay}</td>
+        <td style="text-align:center;">${capacity100 || '-'}</td>
+        <td style="text-align:center;">${o.eff.toFixed(1)}%</td>
+        <td style="text-align:center;">${o.kat}</td>
+        <td style="text-align:center;">${o.levelSkill || '-'}</td>
+      </tr>
+    `;
+  }).join('');
+
+  const html = `
+    <!DOCTYPE html>
+    <html lang="id">
+    <head>
+      <meta charset="UTF-8">
+      <title>Kesimpulan Pembinaan Operator - ${fmtDate(dateStr)}</title>
+      <style>
+        body{ font-family: Arial, Helvetica, sans-serif; color:#111; padding:24px; }
+        h1{ font-size:16px; margin:0 0 4px; }
+        .sub{ font-size:11px; color:#555; margin-bottom:16px; }
+        table{ width:100%; border-collapse:collapse; font-size:11px; }
+        th, td{ border:1px solid #999; padding:5px 7px; text-align:left; }
+        th{ background:#eee; }
+        @media print{
+          @page{ size: landscape; margin: 12mm; }
+        }
+      </style>
+    </head>
+    <body>
+      <h1>Kesimpulan Pembinaan Operator</h1>
+      <div class="sub">Tanggal: ${fmtDate(dateStr)} — Diambil dari DATA LOOKER, 1 operator EFF terendah per kategori proses, per Line</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Line</th><th>Kategori</th><th>No. Absen</th><th>Nama</th><th>Style</th><th>Proses</th>
+            <th>Rata-rata</th><th>Capacity 100%</th><th>EFF</th><th>Status</th><th>Level Skill</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </body>
+    </html>
+  `;
+
+  const printWindow = window.open('', '_blank');
+  if(!printWindow){
+    alert('Browser memblokir jendela baru. Izinkan pop-up untuk situs ini, lalu coba lagi.');
+    return;
+  }
+  printWindow.document.write(html);
+  printWindow.document.close();
+  printWindow.focus();
+  setTimeout(()=>{ printWindow.print(); }, 300);
+}
 function dedupeHistoricalRows(rows){
   const seen = new Set();
   return rows.filter(r=>{
@@ -1788,6 +1896,7 @@ function prosesPriority_(proses){
 }
 
 function renderSummarySection3(rows, dateStr, area){
+  lastKesimpulanData = { dateStr, items: [] };
   if(!rows.length){ area.innerHTML = '<div class="hint">Tidak ada data di DATA LOOKER untuk tanggal ini.</div>'; return; }
 
   const byLine = {};
@@ -1849,6 +1958,7 @@ function renderSummarySection3(rows, dateStr, area){
     const summaryTableRows = categoryLabels.map((label,idx)=>{
       const item = bestPerCategory[idx];
       if(!item) return '';
+      lastKesimpulanData.items.push({ line, label, ...item });
       return buildRowTr(item, label);
     }).join('');
     const summaryHtml = summaryTableRows
@@ -2236,6 +2346,152 @@ function renderSummaryTab(){
 }
 
 /* ---------- Tabs ---------- */
+/* ---------- Komponen multi-select checklist (dipakai untuk tab Histori) ---------- */
+function createMultiSelect(containerId, labelPrefix, options){
+  const container = document.getElementById(containerId);
+  container.innerHTML = `
+    <label>${labelPrefix}</label>
+    <div class="ms-dropdown">
+      <button type="button" class="secondary ms-toggle">Semua ${labelPrefix.toLowerCase()}</button>
+      <div class="ms-panel" style="display:none;">
+        <input type="text" class="ms-search" placeholder="Cari...">
+        <div class="ms-panel-actions">
+          <button type="button" class="secondary small ms-selectall">Pilih semua</button>
+          <button type="button" class="secondary small ms-clearall">Kosongkan</button>
+        </div>
+        <div class="ms-options"></div>
+      </div>
+    </div>
+  `;
+  const toggle = container.querySelector('.ms-toggle');
+  const panel = container.querySelector('.ms-panel');
+  const searchInput = container.querySelector('.ms-search');
+  const optionsWrap = container.querySelector('.ms-options');
+  const selected = new Set();
+
+  function renderOptions(filterText){
+    const ft = (filterText||'').toLowerCase();
+    const filtered = options.filter(o=>o.toLowerCase().includes(ft));
+    optionsWrap.innerHTML = filtered.length ? filtered.map(o=>`
+      <label class="ms-option-label">
+        <input type="checkbox" class="ms-opt" value="${o.replace(/"/g,'&quot;')}" ${selected.has(o)?'checked':''}>
+        <span>${o}</span>
+      </label>
+    `).join('') : '<div class="hint" style="padding:4px 0;">Tidak ada hasil.</div>';
+    optionsWrap.querySelectorAll('.ms-opt').forEach(cb=>{
+      cb.addEventListener('change', ()=>{
+        if(cb.checked) selected.add(cb.value); else selected.delete(cb.value);
+        updateToggleLabel();
+      });
+    });
+  }
+  function updateToggleLabel(){
+    toggle.textContent = selected.size===0 ? `Semua ${labelPrefix.toLowerCase()}` : `${labelPrefix} (${selected.size} dipilih)`;
+  }
+  toggle.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const isOpen = panel.style.display !== 'none';
+    document.querySelectorAll('.ms-panel').forEach(p=> p.style.display='none');
+    if(!isOpen){ panel.style.display='block'; searchInput.value=''; renderOptions(''); searchInput.focus(); }
+  });
+  panel.addEventListener('click', e=> e.stopPropagation());
+  searchInput.addEventListener('input', ()=> renderOptions(searchInput.value));
+  container.querySelector('.ms-selectall').addEventListener('click', ()=>{
+    options.filter(o=>o.toLowerCase().includes(searchInput.value.toLowerCase())).forEach(o=>selected.add(o));
+    renderOptions(searchInput.value); updateToggleLabel();
+  });
+  container.querySelector('.ms-clearall').addEventListener('click', ()=>{
+    options.filter(o=>o.toLowerCase().includes(searchInput.value.toLowerCase())).forEach(o=>selected.delete(o));
+    renderOptions(searchInput.value); updateToggleLabel();
+  });
+
+  renderOptions(''); updateToggleLabel();
+  return { getSelected: ()=> [...selected] };
+}
+document.addEventListener('click', ()=> document.querySelectorAll('.ms-panel').forEach(p=> p.style.display='none'));
+
+/* ---------- Tab: Histori Kapasitas Operator ---------- */
+let histNamaMS = null, histStyleMS = null, histProsesMS = null;
+let histTabInited = false;
+
+function initHistTab(){
+  const fromInput = document.getElementById('histFrom');
+  const toInput = document.getElementById('histTo');
+  if(!fromInput.value && !toInput.value){
+    const today = new Date(todayStr());
+    const from = new Date(today); from.setDate(from.getDate()-2);
+    fromInput.value = from.toISOString().slice(0,10);
+    toInput.value = todayStr();
+  }
+
+  if(!histTabInited){
+    const namaOptions = [...new Set(dataOpt.map(o=>o['NAMA']).filter(Boolean))].sort();
+    const styleOptions = [...new Set(dataSmv.map(r=>r['STYLE']).filter(Boolean))].sort();
+    const prosesOptions = [...new Set(dataSmv.map(r=>r['PROSES']).filter(Boolean))].sort();
+    histNamaMS = createMultiSelect('histNamaMS', 'Nama', namaOptions);
+    histStyleMS = createMultiSelect('histStyleMS', 'Style', styleOptions);
+    histProsesMS = createMultiSelect('histProsesMS', 'Proses', prosesOptions);
+    histTabInited = true;
+  }
+}
+
+async function renderHistTabResults(){
+  const from = document.getElementById('histFrom').value;
+  const to = document.getElementById('histTo').value;
+  const names = histNamaMS ? histNamaMS.getSelected() : [];
+  const styles = histStyleMS ? histStyleMS.getSelected() : [];
+  const prosesArr = histProsesMS ? histProsesMS.getSelected() : [];
+  const msg = document.getElementById('histMsg');
+  const tbody = document.getElementById('histBody');
+  msg.textContent = 'Memuat dari DATA LOOKER...';
+  tbody.innerHTML = '';
+
+  let qs = [];
+  if(from) qs.push('start=' + encodeURIComponent(from));
+  if(to) qs.push('end=' + encodeURIComponent(to));
+  if(names.length) qs.push('names=' + encodeURIComponent(names.join(',')));
+  if(styles.length) qs.push('styles=' + encodeURIComponent(styles.join(',')));
+  if(prosesArr.length) qs.push('prosesList=' + encodeURIComponent(prosesArr.join(',')));
+
+  let rows;
+  try{
+    rows = await gasGet('getHistoricalFiltered' + (qs.length ? '&'+qs.join('&') : ''));
+  }catch(e){
+    msg.textContent = 'Gagal memuat: ' + e.message;
+    return;
+  }
+
+  if(rows.length===0){
+    tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--text-dim);padding:16px;">Tidak ada data yang cocok dengan filter ini.</td></tr>`;
+    msg.textContent = '0 baris ditemukan.';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(r=>{
+    const eff = Number(r['EFF']);
+    const kat = isNaN(eff) ? '-' : kategoriEfisiensi(eff);
+    const capacity100 = lookupSmv(r['STYLE'], r['PROSES']);
+    const rataDisplay = (r['RATA-RATA']!=='' && !isNaN(Number(r['RATA-RATA']))) ? Math.round(Number(r['RATA-RATA'])) : '-';
+    return `
+      <tr>
+        <td data-label="Tanggal">${fmtDate(r['TANGGAL'])}</td>
+        <td data-label="No. Absen">${r['NO. ABSEN']}</td>
+        <td data-label="Nama">${r['NAMA']}</td>
+        <td data-label="Line">${r['LINE']}</td>
+        <td data-label="Style">${r['STYLE']}</td>
+        <td data-label="Proses">${r['PROSES']}</td>
+        <td data-label="Rata-rata">${rataDisplay}</td>
+        <td data-label="Capacity 100%">${capacity100 || '-'}</td>
+        <td data-label="EFF">${isNaN(eff) ? '-' : eff.toFixed(1)+'%'}</td>
+        <td data-label="Kategori">${kat}</td>
+        <td data-label="Level Skill">${r['LEVEL SKILL'] || '-'}</td>
+      </tr>
+    `;
+  }).join('');
+  msg.textContent = `${rows.length} baris ditemukan.`;
+}
+document.getElementById('histShowBtn').addEventListener('click', renderHistTabResults);
+
 function switchTab(tabName){
   document.querySelectorAll('#sidebarNav button').forEach(b=>b.classList.toggle('active', b.dataset.tab===tabName));
   document.querySelectorAll('.tab-content').forEach(t=>t.style.display='none');
@@ -2243,6 +2499,7 @@ function switchTab(tabName){
   if(tabName==='assignment') renderAssignmentTable();
   if(tabName==='kapasitas') renderKapasitasTable();
   if(tabName==='summary') renderSummaryTab();
+  if(tabName==='histori') initHistTab();
   saveUiState();
 }
 document.querySelectorAll('#sidebarNav button').forEach(btn=>{
@@ -2472,6 +2729,7 @@ document.getElementById('kapSearch').addEventListener('input', renderKapasitasTa
 document.getElementById('sumSkillDate').addEventListener('change', renderSummarySection2);
 document.getElementById('sumHistDate').addEventListener('change', renderSection3And5);
 document.getElementById('sumHistLineFilter').addEventListener('change', renderSection3And5);
+document.getElementById('printKesimpulanBtn').addEventListener('click', printKesimpulan);
 document.getElementById('trendShowBtn').addEventListener('click', renderOperatorTrend);
 document.getElementById('sumRefreshBtn').addEventListener('click', async ()=>{
   const msg = document.getElementById('sumRefreshMsg');
