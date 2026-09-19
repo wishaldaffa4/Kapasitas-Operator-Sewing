@@ -2665,8 +2665,8 @@ function renderWipSourcePanel_(rows, dates, source, chartId, legendId, bodyId){
       const lastV = validPoints[validPoints.length-1].v;
       const diff = lastV - firstV;
       let arrow = '→', arrowColor = 'var(--text-dim)';
-      if(diff>0){ arrow='▲'; arrowColor='var(--good)'; }
-      else if(diff<0){ arrow='▼'; arrowColor='var(--bad)'; }
+      if(diff>0){ arrow='▲'; arrowColor='var(--bad)'; }
+      else if(diff<0){ arrow='▼'; arrowColor='var(--good)'; }
       const pctText = firstV===0
         ? `${diff>=0?'+':''}${diff} poin`
         : `${diff>=0?'+':''}${(diff/firstV*100).toFixed(1)}%`;
