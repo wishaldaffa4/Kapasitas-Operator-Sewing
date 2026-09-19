@@ -71,7 +71,7 @@
   .dash-today{outline:1px solid var(--accent);}
   .ms-dropdown{position:relative;}
   .ms-toggle{width:100%;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .ms-panel{position:absolute;top:calc(100% + 4px);left:0;z-index:60;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:8px;width:260px;max-width:calc(100vw - 40px);max-height:280px;overflow-y:auto;box-shadow:0 8px 20px rgba(0,0,0,.4);}
+  .ms-panel{position:fixed;z-index:9999;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:8px;width:260px;max-width:calc(100vw - 16px);max-height:280px;overflow-y:auto;box-shadow:0 8px 20px rgba(0,0,0,.4);}
   .ms-panel input[type="text"]{width:100%;margin-bottom:6px;}
   .ms-panel-actions{display:flex;gap:6px;margin-bottom:6px;}
   .ms-option-label{display:flex;align-items:center;gap:6px;padding:3px 2px;font-size:12.5px;cursor:pointer;border-radius:4px;}
@@ -2415,20 +2415,25 @@ function createMultiSelect(containerId, labelPrefix, options){
     <label>${labelPrefix}</label>
     <div class="ms-dropdown">
       <button type="button" class="secondary ms-toggle">Semua ${labelPrefix.toLowerCase()}</button>
-      <div class="ms-panel" style="display:none;">
-        <input type="text" class="ms-search" placeholder="Cari...">
-        <div class="ms-panel-actions">
-          <button type="button" class="secondary small ms-selectall">Pilih semua</button>
-          <button type="button" class="secondary small ms-clearall">Kosongkan</button>
-        </div>
-        <div class="ms-options"></div>
-      </div>
     </div>
   `;
   const toggle = container.querySelector('.ms-toggle');
-  const panel = container.querySelector('.ms-panel');
-  const searchInput = container.querySelector('.ms-search');
-  const optionsWrap = container.querySelector('.ms-options');
+
+  const panel = document.createElement('div');
+  panel.className = 'ms-panel';
+  panel.style.display = 'none';
+  panel.innerHTML = `
+    <input type="text" class="ms-search" placeholder="Cari...">
+    <div class="ms-panel-actions">
+      <button type="button" class="secondary small ms-selectall">Pilih semua</button>
+      <button type="button" class="secondary small ms-clearall">Kosongkan</button>
+    </div>
+    <div class="ms-options"></div>
+  `;
+  document.body.appendChild(panel);
+
+  const searchInput = panel.querySelector('.ms-search');
+  const optionsWrap = panel.querySelector('.ms-options');
   const selected = new Set();
 
   function renderOptions(filterText){
@@ -2450,19 +2455,38 @@ function createMultiSelect(containerId, labelPrefix, options){
   function updateToggleLabel(){
     toggle.textContent = selected.size===0 ? `Semua ${labelPrefix.toLowerCase()}` : `${labelPrefix} (${selected.size} dipilih)`;
   }
+  function positionPanel(){
+    const rect = toggle.getBoundingClientRect();
+    const panelHeight = panel.offsetHeight;
+    const panelWidth = panel.offsetWidth;
+    let top = rect.bottom + 4;
+    if(top + panelHeight > window.innerHeight - 8){
+      const topAbove = rect.top - panelHeight - 4;
+      top = topAbove < 8 ? 8 : topAbove;
+    }
+    let left = rect.left;
+    if(left + panelWidth > window.innerWidth - 8){ left = window.innerWidth - 8 - panelWidth; }
+    if(left < 8) left = 8;
+    panel.style.top = top + 'px';
+    panel.style.left = left + 'px';
+  }
   toggle.addEventListener('click', (e)=>{
     e.stopPropagation();
     const isOpen = panel.style.display !== 'none';
     document.querySelectorAll('.ms-panel').forEach(p=> p.style.display='none');
-    if(!isOpen){ panel.style.display='block'; searchInput.value=''; renderOptions(''); searchInput.focus(); }
+    if(!isOpen){
+      panel.style.display='block'; searchInput.value=''; renderOptions('');
+      positionPanel();
+      searchInput.focus();
+    }
   });
   panel.addEventListener('click', e=> e.stopPropagation());
   searchInput.addEventListener('input', ()=> renderOptions(searchInput.value));
-  container.querySelector('.ms-selectall').addEventListener('click', ()=>{
+  panel.querySelector('.ms-selectall').addEventListener('click', ()=>{
     options.filter(o=>o.toLowerCase().includes(searchInput.value.toLowerCase())).forEach(o=>selected.add(o));
     renderOptions(searchInput.value); updateToggleLabel();
   });
-  container.querySelector('.ms-clearall').addEventListener('click', ()=>{
+  panel.querySelector('.ms-clearall').addEventListener('click', ()=>{
     options.filter(o=>o.toLowerCase().includes(searchInput.value.toLowerCase())).forEach(o=>selected.delete(o));
     renderOptions(searchInput.value); updateToggleLabel();
   });
@@ -2667,10 +2691,8 @@ function renderWipSourcePanel_(rows, dates, source, chartId, legendId, bodyId){
       let arrow = '→', arrowColor = 'var(--text-dim)';
       if(diff>0){ arrow='▲'; arrowColor='var(--bad)'; }
       else if(diff<0){ arrow='▼'; arrowColor='var(--good)'; }
-      const pctText = firstV===0
-        ? `${diff>=0?'+':''}${diff} poin`
-        : `${diff>=0?'+':''}${(diff/firstV*100).toFixed(1)}%`;
-      trendHtml = `<span style="color:${arrowColor};font-weight:600;">${arrow} ${pctText}</span>`;
+      const diffText = `${diff>=0?'+':''}${diff}`;
+      trendHtml = `<span style="color:${arrowColor};font-weight:600;">${arrow} ${diffText}</span>`;
     }
     return `
       <span style="display:flex;align-items:center;gap:6px;">
