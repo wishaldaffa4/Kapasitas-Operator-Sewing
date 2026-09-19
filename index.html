@@ -998,25 +998,40 @@ function applyCopyRange(){
     source = source.filter(a=>a.line===activeLine);
   }
   if(source.length===0) return;
-  let cur = new Date(fromDate);
-  cur.setDate(cur.getDate()+1);
-  const end = new Date(toDate);
-  while(cur <= end){
-    const dStr = cur.toISOString().slice(0,10);
-    source.forEach(s=>{
-      const already = assignments.find(a=>a.tanggal===dStr && a.noAbsen===s.noAbsen && a.proses===s.proses);
-      if(already){
-        already.line = s.line; already.style = s.style; already.synced=false;
-      }else{
-        assignments.push({ localId: uid(), tanggal: dStr, noAbsen: s.noAbsen, nama: s.nama, line: s.line, style: s.style, proses: s.proses, synced:false });
-      }
-    });
-    cur.setDate(cur.getDate()+1);
-  }
-  storeSet('kap_assignments', assignments, true);
-  renderAssignmentTable();
+
+  const msgEl = document.getElementById('assignSaveMsg');
+  msgEl.textContent = 'Menyalin...';
   document.getElementById('copyPanel').style.display='none';
-  syncNow('assignSaveMsg');
+
+  setTimeout(()=>{
+    const assignIndex = new Map();
+    assignments.forEach(a=> assignIndex.set(`${a.tanggal}||${a.noAbsen}||${a.proses}`, a));
+
+    let cur = new Date(fromDate);
+    cur.setDate(cur.getDate()+1);
+    const end = new Date(toDate);
+    let copiedCount = 0;
+    while(cur <= end){
+      const dStr = cur.toISOString().slice(0,10);
+      source.forEach(s=>{
+        const key = `${dStr}||${s.noAbsen}||${s.proses}`;
+        const already = assignIndex.get(key);
+        if(already){
+          already.line = s.line; already.style = s.style; already.synced=false;
+        }else{
+          const newRow = { localId: uid(), tanggal: dStr, noAbsen: s.noAbsen, nama: s.nama, line: s.line, style: s.style, proses: s.proses, synced:false };
+          assignments.push(newRow);
+          assignIndex.set(key, newRow);
+        }
+        copiedCount++;
+      });
+      cur.setDate(cur.getDate()+1);
+    }
+    storeSet('kap_assignments', assignments, true);
+    renderAssignmentTable();
+    msgEl.textContent = `${copiedCount} baris tersalin, menyinkronkan...`;
+    syncNow('assignSaveMsg');
+  }, 30);
 }
 
 /* ---------- Kapasitas tab ---------- */
