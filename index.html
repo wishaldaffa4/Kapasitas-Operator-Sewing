@@ -330,20 +330,39 @@
   <!-- TAB: DASHBOARD WIP -->
   <div id="tab-wip" class="tab-content" style="display:none;">
     <div class="panel">
-      <div class="panel-title">Dashboard Tren WIP Sewing (dari sheet WIP Sewing &amp; WIP Penyimpangan)</div>
       <div class="panel-body">
         <div class="row" style="margin-bottom:6px;">
           <div class="field" style="min-width:200px;" id="wipLineMS"></div>
           <div class="field"><label>&nbsp;</label><button id="wipShowBtn">Tampilkan</button></div>
           <span class="hint" id="wipMsg" style="align-self:center;"></span>
         </div>
-        <div class="hint" id="wipRangeLabel" style="margin-bottom:12px;"></div>
-        <div id="wipChart" style="overflow-x:auto;"></div>
-        <div id="wipLegend" style="display:flex;flex-wrap:wrap;gap:10px 16px;margin-top:10px;font-size:12px;"></div>
+        <div class="hint" id="wipRangeLabel"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Tren WIP Sewing</div>
+      <div class="panel-body">
+        <div id="wipChartSewing" style="overflow-x:auto;"></div>
+        <div id="wipLegendSewing" style="display:flex;flex-wrap:wrap;gap:10px 16px;margin-top:10px;font-size:12px;"></div>
         <div class="table-wrap" style="margin-top:18px;">
           <table class="data-table">
-            <thead><tr><th>Tanggal</th><th>Line</th><th>Sumber</th><th>WIP SEW</th><th>WIP SEW HOUR</th></tr></thead>
-            <tbody id="wipBody"></tbody>
+            <thead><tr><th>Tanggal</th><th>Line</th><th>WIP SEW</th><th>WIP SEW HOUR</th></tr></thead>
+            <tbody id="wipBodySewing"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Tren WIP Penyimpangan</div>
+      <div class="panel-body">
+        <div id="wipChartPenyimpangan" style="overflow-x:auto;"></div>
+        <div id="wipLegendPenyimpangan" style="display:flex;flex-wrap:wrap;gap:10px 16px;margin-top:10px;font-size:12px;"></div>
+        <div class="table-wrap" style="margin-top:18px;">
+          <table class="data-table">
+            <thead><tr><th>Tanggal</th><th>Line</th><th>WIP SEW</th><th>WIP SEW HOUR</th></tr></thead>
+            <tbody id="wipBodyPenyimpangan"></tbody>
           </table>
         </div>
       </div>
@@ -2620,6 +2639,60 @@ function renderWipLineChart(containerId, series, dates){
   document.getElementById(containerId).innerHTML = svg || '<div class="hint">Tidak ada data untuk ditampilkan.</div>';
 }
 
+function renderWipSourcePanel_(rows, dates, source, chartId, legendId, bodyId){
+  const linesInData = [...new Set(rows.filter(r=>r['SOURCE']===source).map(r=>r['LINE']).filter(Boolean))].sort();
+  const colors = ['#4d9fff','#3ecf8e','#e0a72e','#e0554e','#a78bfa','#f472b6','#22c1c3','#e67e22','#9b59b6','#2ecc71'];
+  const lineColorMap = {};
+  linesInData.forEach((l,i)=> lineColorMap[l] = colors[i % colors.length]);
+
+  const series = linesInData.map(line=>{
+    const values = dates.map(d=>{
+      const found = rows.find(r=>r['LINE']===line && r['SOURCE']===source && r['TANGGAL']===d);
+      if(!found) return null;
+      const v = Number(found['WIP SEW']);
+      return isNaN(v) ? null : v;
+    });
+    return { label: line, color: lineColorMap[line], dashed:false, values };
+  }).filter(s=> s.values.some(v=>v!==null));
+
+  renderWipLineChart(chartId, series, dates);
+
+  document.getElementById(legendId).innerHTML = series.map(s=>{
+    const validPoints = s.values.map((v,i)=>({v,i})).filter(p=>p.v!==null);
+    let trendHtml = '<span class="hint">-</span>';
+    if(validPoints.length>=2){
+      const firstV = validPoints[0].v;
+      const lastV = validPoints[validPoints.length-1].v;
+      const diff = lastV - firstV;
+      let arrow = '→', arrowColor = 'var(--text-dim)';
+      if(diff>0){ arrow='▲'; arrowColor='var(--good)'; }
+      else if(diff<0){ arrow='▼'; arrowColor='var(--bad)'; }
+      const pctText = firstV===0
+        ? `${diff>=0?'+':''}${diff} poin`
+        : `${diff>=0?'+':''}${(diff/firstV*100).toFixed(1)}%`;
+      trendHtml = `<span style="color:${arrowColor};font-weight:600;">${arrow} ${pctText}</span>`;
+    }
+    return `
+      <span style="display:flex;align-items:center;gap:6px;">
+        <span style="display:inline-block;width:16px;height:0;border-top:2px solid ${s.color};"></span>
+        ${s.label}
+        ${trendHtml}
+      </span>
+    `;
+  }).join('') || '<span class="hint">Tidak ada Line dengan data pada rentang ini.</span>';
+
+  const sourceRows = rows.filter(r=>r['SOURCE']===source).slice().sort((a,b)=> a['TANGGAL'].localeCompare(b['TANGGAL']) || a['LINE'].localeCompare(b['LINE']));
+  const tbody = document.getElementById(bodyId);
+  tbody.innerHTML = sourceRows.length ? sourceRows.map(r=>`
+    <tr>
+      <td data-label="Tanggal">${fmtDate(r['TANGGAL'])}</td>
+      <td data-label="Line">${r['LINE']}</td>
+      <td data-label="WIP SEW">${r['WIP SEW']}</td>
+      <td data-label="WIP SEW HOUR">${r['WIP SEW HOUR']}</td>
+    </tr>
+  `).join('') : `<tr><td colspan="4" style="text-align:center;color:var(--text-dim);padding:16px;">Tidak ada data pada rentang &amp; filter ini.</td></tr>`;
+}
+
 function renderWipDashboard(){
   const selectedLines = wipLineMS ? wipLineMS.getSelected() : [];
   const rows = selectedLines.length ? wipRawRows.filter(r=>selectedLines.includes(r['LINE'])) : wipRawRows;
@@ -2630,46 +2703,8 @@ function renderWipDashboard(){
   const endD = new Date(end);
   while(cur <= endD){ dates.push(cur.toISOString().slice(0,10)); cur.setDate(cur.getDate()+1); }
 
-  const linesInData = [...new Set(rows.map(r=>r['LINE']).filter(Boolean))].sort();
-  const colors = ['#4d9fff','#3ecf8e','#e0a72e','#e0554e','#a78bfa','#f472b6','#22c1c3','#e67e22','#9b59b6','#2ecc71'];
-  const lineColorMap = {};
-  linesInData.forEach((l,i)=> lineColorMap[l] = colors[i % colors.length]);
-
-  const series = [];
-  linesInData.forEach(line=>{
-    ['WIP Sewing','WIP Penyimpangan'].forEach(source=>{
-      const values = dates.map(d=>{
-        const found = rows.find(r=>r['LINE']===line && r['SOURCE']===source && r['TANGGAL']===d);
-        if(!found) return null;
-        const v = Number(found['WIP SEW']);
-        return isNaN(v) ? null : v;
-      });
-      if(values.some(v=>v!==null)){
-        series.push({ label: `${line} — ${source}`, color: lineColorMap[line], dashed: source==='WIP Penyimpangan', values });
-      }
-    });
-  });
-
-  renderWipLineChart('wipChart', series, dates);
-
-  document.getElementById('wipLegend').innerHTML = series.map(s=>`
-    <span style="display:flex;align-items:center;gap:5px;">
-      <span style="display:inline-block;width:16px;height:0;border-top:2px ${s.dashed?'dashed':'solid'} ${s.color};"></span>
-      ${s.label}
-    </span>
-  `).join('');
-
-  const tbody = document.getElementById('wipBody');
-  const sortedRows = rows.slice().sort((a,b)=> a['TANGGAL'].localeCompare(b['TANGGAL']) || a['LINE'].localeCompare(b['LINE']));
-  tbody.innerHTML = sortedRows.length ? sortedRows.map(r=>`
-    <tr>
-      <td data-label="Tanggal">${fmtDate(r['TANGGAL'])}</td>
-      <td data-label="Line">${r['LINE']}</td>
-      <td data-label="Sumber">${r['SOURCE']}</td>
-      <td data-label="WIP SEW">${r['WIP SEW']}</td>
-      <td data-label="WIP SEW HOUR">${r['WIP SEW HOUR']}</td>
-    </tr>
-  `).join('') : `<tr><td colspan="5" style="text-align:center;color:var(--text-dim);padding:16px;">Tidak ada data pada rentang &amp; filter ini.</td></tr>`;
+  renderWipSourcePanel_(rows, dates, 'WIP Sewing', 'wipChartSewing', 'wipLegendSewing', 'wipBodySewing');
+  renderWipSourcePanel_(rows, dates, 'WIP Penyimpangan', 'wipChartPenyimpangan', 'wipLegendPenyimpangan', 'wipBodyPenyimpangan');
 }
 document.getElementById('wipShowBtn').addEventListener('click', renderWipDashboard);
 
