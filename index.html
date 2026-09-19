@@ -993,11 +993,14 @@ function applyCopyRange(){
     alert('Pilih dulu Line di filter (atas tabel) sebelum menyalin hanya untuk line aktif.');
     return;
   }
-  let source = assignments.filter(a=>a.tanggal===fromDate && a.style && a.proses);
+  let source = assignments.filter(a=>a.tanggal===fromDate && isAssignComplete(a));
   if(scope==='active'){
     source = source.filter(a=>a.line===activeLine);
   }
-  if(source.length===0) return;
+  if(source.length===0){
+    alert('Tidak ada assignment yang bisa disalin dari tanggal ini (Line/Style/Proses belum lengkap).');
+    return;
+  }
 
   const msgEl = document.getElementById('assignSaveMsg');
   msgEl.textContent = 'Menyalin...';
