@@ -2592,8 +2592,8 @@ function getPastSaturday_(refDate, weeksAgo){
 }
 function computeWipDateRange_(){
   const today = new Date(todayStr());
-  const startD = getPastSaturday_(today, 2);
-  const endD = getPastSaturday_(today, 1);
+  const startD = getPastSaturday_(today, 1);
+  const endD = getPastSaturday_(today, 0);
   return { start: startD.toISOString().slice(0,10), end: endD.toISOString().slice(0,10) };
 }
 
