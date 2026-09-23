@@ -261,11 +261,12 @@
       <div class="panel-body">
         <div class="row" style="margin-bottom:12px;">
           <div class="field"><label>Tanggal</label><input type="date" id="sumHistDate"></div>
+          <div class="field"><label>&nbsp;</label><button id="sumHistShowBtn">Tampilkan</button></div>
           <div class="field"><label>Filter Line</label><select id="sumHistLineFilter"><option value="">Semua line</option></select></div>
           <div class="field"><label>&nbsp;</label><button class="secondary" id="printKesimpulanBtn">📋 Cetak ke Sheet (Pemanggilan OPT)</button></div>
           <span class="hint" id="sumHistMsg" style="align-self:center;"></span>
         </div>
-        <div class="hint" style="margin-bottom:10px;">Tanggal &amp; filter Line ini juga dipakai untuk poin 5 di bawah.</div>
+        <div class="hint" style="margin-bottom:10px;">Tanggal &amp; filter Line ini juga dipakai untuk poin 5 di bawah. Ganti tanggal lalu klik "Tampilkan" untuk memuat ulang; ganti Filter Line langsung otomatis (tidak perlu klik apa-apa).</div>
         <div id="sumBelajarBisaArea"></div>
       </div>
     </div>
@@ -1877,6 +1878,9 @@ async function loadHistoricalByDate(dateStr){
   return rows;
 }
 
+let sumHistLoadedDate = null;
+let sumHistLoadedRows = [];
+
 async function renderSection3And5(){
   const dateInput = document.getElementById('sumHistDate');
   if(!dateInput.value){
@@ -1900,6 +1904,9 @@ async function renderSection3And5(){
     return;
   }
 
+  sumHistLoadedDate = dateStr;
+  sumHistLoadedRows = rows;
+
   const currentLineVal = lineFilterSel.value;
   const linesAvailable = [...new Set(rows.map(r=>r['LINE']).filter(Boolean))].sort();
   lineFilterSel.innerHTML = '<option value="">Semua line</option>' + linesAvailable.map(l=>`<option value="${l}">${l}</option>`).join('');
@@ -1910,6 +1917,19 @@ async function renderSection3And5(){
 
   renderSummarySection3(filteredRows, dateStr, area3);
   renderSummarySection5(filteredRows, dateStr, area5);
+}
+
+function refilterSection3And5ByLine(){
+  if(sumHistLoadedDate === null){
+    return;
+  }
+  const lineFilterSel = document.getElementById('sumHistLineFilter');
+  const area3 = document.getElementById('sumBelajarBisaArea');
+  const area5 = document.getElementById('sumKapasitasArea');
+  const lineFilter = lineFilterSel.value;
+  const filteredRows = lineFilter ? sumHistLoadedRows.filter(r=>r['LINE']===lineFilter) : sumHistLoadedRows;
+  renderSummarySection3(filteredRows, sumHistLoadedDate, area3);
+  renderSummarySection5(filteredRows, sumHistLoadedDate, area5);
 }
 
 function prosesPriority_(proses){
@@ -2883,8 +2903,8 @@ document.getElementById('kapDate').addEventListener('change', renderKapasitasTab
 document.getElementById('kapLine').addEventListener('change', renderKapasitasTable);
 document.getElementById('kapSearch').addEventListener('input', renderKapasitasTable);
 document.getElementById('sumSkillDate').addEventListener('change', renderSummarySection2);
-document.getElementById('sumHistDate').addEventListener('change', renderSection3And5);
-document.getElementById('sumHistLineFilter').addEventListener('change', renderSection3And5);
+document.getElementById('sumHistShowBtn').addEventListener('click', renderSection3And5);
+document.getElementById('sumHistLineFilter').addEventListener('change', refilterSection3And5ByLine);
 document.getElementById('printKesimpulanBtn').addEventListener('click', cetakKesimpulanKeSheet);
 document.getElementById('trendShowBtn').addEventListener('click', renderOperatorTrend);
 document.getElementById('sumRefreshBtn').addEventListener('click', async ()=>{
