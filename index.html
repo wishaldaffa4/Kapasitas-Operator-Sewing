@@ -259,7 +259,7 @@
         <div class="row" style="margin-bottom:12px;">
           <div class="field"><label>Tanggal</label><input type="date" id="sumHistDate"></div>
           <div class="field"><label>Filter Line</label><select id="sumHistLineFilter"><option value="">Semua line</option></select></div>
-          <div class="field"><label>&nbsp;</label><button class="secondary" id="printKesimpulanBtn">🖨️ Print Kesimpulan</button></div>
+          <div class="field"><label>&nbsp;</label><button class="secondary" id="printKesimpulanBtn">📋 Cetak ke Sheet (Pemanggilan OPT)</button></div>
           <span class="hint" id="sumHistMsg" style="align-self:center;"></span>
         </div>
         <div class="hint" style="margin-bottom:10px;">Tanggal &amp; filter Line ini juga dipakai untuk poin 5 di bawah.</div>
@@ -287,7 +287,7 @@
       <div class="panel-title">6. Tren Performansi Operator (dari DATA LOOKER)</div>
       <div class="panel-body">
         <div class="row" style="margin-bottom:12px;">
-          <div class="field" style="flex:1;min-width:220px;"><label>No. Absen (pisah koma untuk beberapa orang)</label><input type="text" id="trendNipInput" placeholder="D.16153, D.11878, D.15908" style="width:100%;"></div>
+          <div class="field" style="min-width:220px;" id="trendOperatorMS"></div>
           <div class="field"><label>Dari tanggal</label><input type="date" id="trendFromDate"></div>
           <div class="field"><label>Sampai tanggal</label><input type="date" id="trendToDate"></div>
           <div class="field"><label>&nbsp;</label><button id="trendShowBtn">Tampilkan Tren</button></div>
@@ -1821,75 +1821,38 @@ async function renderSummarySection2(){
 let historicalByDateCache = { date: null, rows: null };
 let lastKesimpulanData = { dateStr: null, items: [] };
 
-function printKesimpulan(){
+async function cetakKesimpulanKeSheet(){
   if(!lastKesimpulanData.items.length){
-    alert('Belum ada data Kesimpulan untuk diprint. Pastikan poin 3 sudah menampilkan data (pilih tanggal yang ada operator kategori Belajar/Bisa-nya).');
+    alert('Belum ada data Kesimpulan untuk dicetak. Pastikan poin 3 sudah menampilkan data (pilih tanggal yang ada operator kategori Belajar/Bisa-nya).');
     return;
   }
   const { dateStr, items } = lastKesimpulanData;
-  const rowsHtml = items.map(o=>{
+  const msg = document.getElementById('sumHistMsg');
+  msg.textContent = 'Mengirim ke sheet Pemanggilan OPT...';
+
+  const sheetRows = items.map(o=>{
     const capacity100 = lookupSmv(o.style, o.proses);
-    const rataDisplay = (o.rata!=='' && !isNaN(Number(o.rata))) ? Math.round(Number(o.rata)) : '-';
-    return `
-      <tr>
-        <td>${o.line}</td>
-        <td>${o.label}</td>
-        <td>${o.noAbsen}</td>
-        <td>${o.nama}</td>
-        <td>${o.style}</td>
-        <td>${o.proses}</td>
-        <td style="text-align:center;">${rataDisplay}</td>
-        <td style="text-align:center;">${capacity100 || '-'}</td>
-        <td style="text-align:center;">${o.eff.toFixed(1)}%</td>
-        <td style="text-align:center;">${o.kat}</td>
-        <td style="text-align:center;">${o.levelSkill || '-'}</td>
-      </tr>
-    `;
-  }).join('');
+    const rataDisplay = (o.rata!=='' && !isNaN(Number(o.rata))) ? Math.round(Number(o.rata)) : '';
+    return {
+      'TANGGAL': fmtDate(dateStr),
+      'NIP': o.noAbsen,
+      'NAMA': o.nama,
+      'LINE': o.line,
+      'STYLE': o.style,
+      'PROSES': o.proses,
+      'RATA-RATA': rataDisplay,
+      'CAPACITY 100%': capacity100 || '',
+      'EFF': Number(o.eff.toFixed(1)),
+      'LEVEL SKILL': o.levelSkill || ''
+    };
+  });
 
-  const html = `
-    <!DOCTYPE html>
-    <html lang="id">
-    <head>
-      <meta charset="UTF-8">
-      <title>Kesimpulan Pembinaan Operator - ${fmtDate(dateStr)}</title>
-      <style>
-        body{ font-family: Arial, Helvetica, sans-serif; color:#111; padding:24px; }
-        h1{ font-size:16px; margin:0 0 4px; }
-        .sub{ font-size:11px; color:#555; margin-bottom:16px; }
-        table{ width:100%; border-collapse:collapse; font-size:11px; }
-        th, td{ border:1px solid #999; padding:5px 7px; text-align:left; }
-        th{ background:#eee; }
-        @media print{
-          @page{ size: landscape; margin: 12mm; }
-        }
-      </style>
-    </head>
-    <body>
-      <h1>Kesimpulan Pembinaan Operator</h1>
-      <div class="sub">Tanggal: ${fmtDate(dateStr)} — Diambil dari DATA LOOKER, 1 operator EFF terendah per kategori proses, per Line</div>
-      <table>
-        <thead>
-          <tr>
-            <th>Line</th><th>Kategori</th><th>No. Absen</th><th>Nama</th><th>Style</th><th>Proses</th>
-            <th>Rata-rata</th><th>Capacity 100%</th><th>EFF</th><th>Status</th><th>Level Skill</th>
-          </tr>
-        </thead>
-        <tbody>${rowsHtml}</tbody>
-      </table>
-    </body>
-    </html>
-  `;
-
-  const printWindow = window.open('', '_blank');
-  if(!printWindow){
-    alert('Browser memblokir jendela baru. Izinkan pop-up untuk situs ini, lalu coba lagi.');
-    return;
+  try{
+    await gasPost('appendPemanggilanOpt', sheetRows);
+    msg.textContent = `${sheetRows.length} baris berhasil dicetak ke sheet Pemanggilan OPT.`;
+  }catch(e){
+    msg.textContent = 'Gagal mencetak ke sheet: ' + e.message;
   }
-  printWindow.document.write(html);
-  printWindow.document.close();
-  printWindow.focus();
-  setTimeout(()=>{ printWindow.print(); }, 300);
 }
 function dedupeHistoricalRows(rows){
   const seen = new Set();
@@ -2114,37 +2077,6 @@ function renderSummarySection5(rows, dateStr, area){
 }
 
 let bestPerformanceCache = null;
-let catatanEvaluasiCache = null;
-
-async function loadCatatanEvaluasi(){
-  if(catatanEvaluasiCache) return catatanEvaluasiCache;
-  try{
-    const rows = await gasGet('getCatatanEvaluasi');
-    catatanEvaluasiCache = {};
-    rows.forEach(r=>{
-      catatanEvaluasiCache[r['NO. ABSEN']] = {
-        catatan: r['CATATAN'] || '',
-        diisiOleh: r['DIISI OLEH'] || '',
-        tanggalDiisi: r['TANGGAL DIISI'] || ''
-      };
-    });
-  }catch(e){
-    catatanEvaluasiCache = {};
-  }
-  return catatanEvaluasiCache;
-}
-
-async function saveCatatanEvaluasi(noAbsen, nama, catatan, diisiOleh){
-  const tanggalDiisi = todayStr();
-  catatanEvaluasiCache[noAbsen] = { catatan, diisiOleh, tanggalDiisi };
-  const row = { 'NO. ABSEN': noAbsen, 'NAMA': nama, 'CATATAN': catatan, 'DIISI OLEH': diisiOleh, 'TANGGAL DIISI': tanggalDiisi };
-  try{
-    await gasPost('syncCatatanEvaluasi', [row]);
-    return { ok:true, tanggalDiisi };
-  }catch(e){
-    return { ok:false, error: e.message };
-  }
-}
 
 function getCurrentLineForOperator(noAbsen){
   const records = kapasitas.filter(k=>k.noAbsen===noAbsen && k.line);
@@ -2179,7 +2111,6 @@ async function renderSummarySection4(){
     if(!bestPerformanceCache){
       bestPerformanceCache = await gasGet('getBestPerformance');
     }
-    await loadCatatanEvaluasi();
     const byNoAbsen = {};
     bestPerformanceCache.forEach(r=>{ byNoAbsen[r['NO. ABSEN']] = r; });
 
@@ -2189,10 +2120,9 @@ async function renderSummarySection4(){
       const effVal = perf ? Number(perf['EFF']) : null;
       const currentLine = getCurrentLineForOperator(op['NIP']);
       const lineToShow = currentLine || (perf ? perf['LINE'] : '') || '-';
-      const catatan = catatanEvaluasiCache[op['NIP']] || { catatan:'', diisiOleh:'', tanggalDiisi:'' };
       const capacity100 = perf ? lookupSmv(perf['STYLE'], perf['PROSES']) : 0;
       const levelSkillVal = perf ? Number(perf['LEVEL SKILL']) : null;
-      return { op, perf, sisaBulan, effVal, lineToShow, catatan, capacity100, levelSkillVal };
+      return { op, perf, sisaBulan, effVal, lineToShow, capacity100, levelSkillVal };
     }).filter(r => r.perf);
 
     rows.sort((a,b)=>{
@@ -2213,7 +2143,7 @@ async function renderSummarySection4(){
     }
 
     empty.style.display='none';
-    tbody.innerHTML = rows.map(({op, perf, effVal, lineToShow, catatan, capacity100}, idx)=>`
+    tbody.innerHTML = rows.map(({op, perf, effVal, lineToShow, capacity100})=>`
         <tr data-noabsen="${op['NIP']}" data-nama="${(op['NAMA']||'').replace(/"/g,'&quot;')}">
           <td data-label="No. Absen">${op['NIP']}</td>
           <td data-label="Nama">${op['NAMA']}</td>
@@ -2226,35 +2156,8 @@ async function renderSummarySection4(){
           <td data-label="Tanggal">${perf ? fmtDate(perf['TANGGAL']) : '-'}</td>
           <td data-label="Style">${perf ? perf['STYLE'] : '-'}</td>
           <td data-label="Proses">${perf ? perf['PROSES'] : '-'}</td>
-          <td data-label="Diisi Oleh"><input type="text" class="catatan-diisi-oleh" placeholder="Nama SPV/Leader" value="${catatan.diisiOleh}" style="width:130px;"></td>
-          <td data-label="Catatan SPV/Leader"><input type="text" class="catatan-isi" placeholder="Tulis masukan..." value="${catatan.catatan}" style="width:220px;"></td>
-          <td data-label="Tanggal Diisi" class="catatan-tanggal-diisi">${catatan.tanggalDiisi ? fmtDate(catatan.tanggalDiisi) : '-'}</td>
         </tr>
       `).join('');
-
-    tbody.querySelectorAll('tr').forEach(tr=>{
-      const noAbsen = tr.getAttribute('data-noabsen');
-      const nama = tr.getAttribute('data-nama');
-      const diisiInput = tr.querySelector('.catatan-diisi-oleh');
-      const catatanInput = tr.querySelector('.catatan-isi');
-      const tanggalCell = tr.querySelector('.catatan-tanggal-diisi');
-
-      async function handleSave(){
-        const originalBg = catatanInput.style.background;
-        catatanInput.style.background = 'rgba(224,167,46,.15)';
-        const result = await saveCatatanEvaluasi(noAbsen, nama, catatanInput.value.trim(), diisiInput.value.trim());
-        if(result.ok){
-          catatanInput.style.background = 'rgba(62,207,142,.15)';
-          tanggalCell.textContent = fmtDate(result.tanggalDiisi);
-          setTimeout(()=>{ catatanInput.style.background = originalBg; }, 1200);
-        }else{
-          catatanInput.style.background = 'rgba(224,85,78,.2)';
-          catatanInput.title = 'Gagal simpan: '+result.error;
-        }
-      }
-      diisiInput.addEventListener('blur', handleSave);
-      catatanInput.addEventListener('blur', handleSave);
-    });
   }catch(e){
     empty.style.display='block';
     empty.textContent='Gagal memuat data historis: '+e.message;
@@ -2301,19 +2204,23 @@ function renderTrendChart(containerId, series, dates){
   document.getElementById(containerId).innerHTML = svg || '<div class="hint">Tidak ada data untuk ditampilkan.</div>';
 }
 
+let trendOperatorMS = null;
+let trendOperatorMSInited = false;
+
 async function renderOperatorTrend(){
-  const nipInput = document.getElementById('trendNipInput').value.trim();
   const fromDate = document.getElementById('trendFromDate').value;
   const toDate = document.getElementById('trendToDate').value;
   const msg = document.getElementById('trendMsg');
   const chartArea = document.getElementById('trendChart');
   const summaryArea = document.getElementById('trendSummaryArea');
 
-  if(!nipInput || !fromDate || !toDate){
-    msg.textContent = 'Isi No. Absen (pisah koma) dan rentang tanggal dulu.';
+  const selectedOptions = trendOperatorMS ? trendOperatorMS.getSelected() : [];
+  const nips = selectedOptions.map(s=> s.split(' - ')[0].trim()).filter(Boolean);
+
+  if(!nips.length || !fromDate || !toDate){
+    msg.textContent = 'Pilih minimal satu operator dan rentang tanggal dulu.';
     return;
   }
-  const nips = nipInput.split(',').map(s=>s.trim()).filter(Boolean);
   msg.textContent = 'Memuat dari DATA LOOKER...';
   chartArea.innerHTML=''; summaryArea.innerHTML='';
 
@@ -2407,6 +2314,11 @@ function renderSummaryTab(){
   renderSummarySection2();
   renderSection3And5();
   renderSummarySection4();
+  if(!trendOperatorMSInited && dataOpt.length){
+    const operatorOptions = dataOpt.map(o=> `${o['NIP']} - ${o['NAMA']}`).sort();
+    trendOperatorMS = createMultiSelect('trendOperatorMS', 'Operator', operatorOptions);
+    trendOperatorMSInited = true;
+  }
 }
 
 /* ---------- Tabs ---------- */
@@ -2570,8 +2482,8 @@ async function renderHistTabResults(){
         <td data-label="Proses">${r['PROSES']}</td>
         <td data-label="Rata-rata">${rataDisplay}</td>
         <td data-label="Capacity 100%">${capacity100 || '-'}</td>
-        <td data-label="EFF">${isNaN(eff) ? '-' : eff.toFixed(1)+'%'}</td>
-        <td data-label="Kategori">${kat}</td>
+        <td data-label="EFF">${isNaN(eff) ? '-' : `<span class="eff-pill ${effClass(eff)}">${eff.toFixed(1)}%</span>`}</td>
+        <td data-label="Kategori">${kat==='-' ? '-' : `<span class="eff-pill ${effClass(eff)}">${kat}</span>`}</td>
         <td data-label="Level Skill">${r['LEVEL SKILL'] || '-'}</td>
       </tr>
     `;
@@ -2705,7 +2617,7 @@ function renderWipSourcePanel_(rows, dates, source, chartId, legendId, bodyId){
     `;
   }).join('') || '<span class="hint">Tidak ada Line dengan data pada rentang ini.</span>';
 
-  const sourceRows = rows.filter(r=>r['SOURCE']===source).slice().sort((a,b)=> a['TANGGAL'].localeCompare(b['TANGGAL']) || a['LINE'].localeCompare(b['LINE']));
+  const sourceRows = rows.filter(r=>r['SOURCE']===source).slice().sort((a,b)=> b['TANGGAL'].localeCompare(a['TANGGAL']) || a['LINE'].localeCompare(b['LINE']));
   const tbody = document.getElementById(bodyId);
   tbody.innerHTML = sourceRows.length ? sourceRows.map(r=>`
     <tr>
@@ -2970,7 +2882,7 @@ document.getElementById('kapSearch').addEventListener('input', renderKapasitasTa
 document.getElementById('sumSkillDate').addEventListener('change', renderSummarySection2);
 document.getElementById('sumHistDate').addEventListener('change', renderSection3And5);
 document.getElementById('sumHistLineFilter').addEventListener('change', renderSection3And5);
-document.getElementById('printKesimpulanBtn').addEventListener('click', printKesimpulan);
+document.getElementById('printKesimpulanBtn').addEventListener('click', cetakKesimpulanKeSheet);
 document.getElementById('trendShowBtn').addEventListener('click', renderOperatorTrend);
 document.getElementById('sumRefreshBtn').addEventListener('click', async ()=>{
   const msg = document.getElementById('sumRefreshMsg');
@@ -2979,7 +2891,6 @@ document.getElementById('sumRefreshBtn').addEventListener('click', async ()=>{
     await pullExistingData();
     excludePendingDeletes();
     bestPerformanceCache = null;
-    catatanEvaluasiCache = null;
     historicalByDateCache = { date: null, rows: null };
     renderSummaryTab();
     msg.textContent = 'Terbaru per ' + new Date().toLocaleTimeString('id-ID');
