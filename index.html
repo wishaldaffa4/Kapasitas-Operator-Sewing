@@ -52,6 +52,8 @@
   #sumPerformTable thead th{white-space:normal;word-break:break-word;vertical-align:bottom;}
   #sumPerformTable td:nth-child(4), #sumPerformTable th:nth-child(4){width:44px;max-width:44px;text-align:center;}
   #sumPerformTable td:nth-child(5), #sumPerformTable th:nth-child(5){width:60px;max-width:60px;text-align:center;}
+  #histTable td:nth-child(5), #histTable th:nth-child(5),
+  #histTable td:nth-child(6), #histTable th:nth-child(6){width:180px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .eff-pill{display:inline-block;padding:2px 8px;border-radius:20px;font-weight:600;font-size:11.5px;}
   .eff-good{background:rgba(62,207,142,.15);color:var(--good);}
   .eff-warn{background:rgba(224,167,46,.15);color:var(--warn);}
@@ -108,6 +110,7 @@
     table.data-table td .style-input, table.data-table td .proses-input{width:100%;}
     table.data-table td.col-nama{width:auto;max-width:none;white-space:normal;overflow:visible;text-overflow:clip;}
     #sumPerformTable td:nth-child(4), #sumPerformTable td:nth-child(5){width:auto;max-width:none;text-align:left;}
+    #histTable td:nth-child(5), #histTable td:nth-child(6){width:auto;max-width:none;white-space:normal;overflow:visible;text-overflow:clip;}
     .row .field button{width:100%;white-space:normal;word-break:break-word;text-align:center;line-height:1.3;}
     .hint{white-space:normal;word-break:break-word;}
   }
@@ -271,7 +274,7 @@
       <div class="panel-title">4. Performansi Operator — Sisa Penetapan &lt; 24 Bulan (histori keseluruhan)</div>
       <div class="table-wrap">
         <table class="data-table" id="sumPerformTable">
-          <thead><tr><th>No. Absen</th><th>Nama</th><th>Line</th><th>Sisa Penetapan (Bulan)</th><th>Rata-rata</th><th>Capacity 100% (SMV)</th><th>EFF Terbaik</th><th>Level Skill</th><th>Tanggal</th><th>Style</th><th>Proses</th><th>Diisi Oleh</th><th>Catatan SPV/Leader</th><th>Tanggal Diisi</th></tr></thead>
+          <thead><tr><th>No. Absen</th><th>Nama</th><th>Line</th><th>Sisa Penetapan (Bulan)</th><th>Rata-rata</th><th>Capacity 100% (SMV)</th><th>EFF Terbaik</th><th>Level Skill</th><th>Tanggal</th><th>Style</th><th>Proses</th></tr></thead>
           <tbody id="sumPerformBody"></tbody>
         </table>
         <div class="empty" id="sumPerformEmpty" style="display:none;">Memuat data historis...</div>
@@ -315,7 +318,7 @@
         </div>
         <div class="hint" id="histMsg"></div>
         <div class="table-wrap" style="margin-top:10px;">
-          <table class="data-table">
+          <table class="data-table" id="histTable">
             <thead><tr>
               <th>Tanggal</th><th>No. Absen</th><th>Nama</th><th>Line</th><th>Style</th><th>Proses</th>
               <th>Rata-rata</th><th>Capacity 100%</th><th>EFF</th><th>Kategori</th><th>Level Skill</th>
@@ -1842,7 +1845,7 @@ async function cetakKesimpulanKeSheet(){
       'PROSES': o.proses,
       'RATA-RATA': rataDisplay,
       'CAPACITY 100%': capacity100 || '',
-      'EFF': Number(o.eff.toFixed(1)),
+      'EFF': Number((o.eff/100).toFixed(4)),
       'LEVEL SKILL': o.levelSkill || ''
     };
   });
@@ -2478,8 +2481,8 @@ async function renderHistTabResults(){
         <td data-label="No. Absen">${r['NO. ABSEN']}</td>
         <td data-label="Nama">${r['NAMA']}</td>
         <td data-label="Line">${r['LINE']}</td>
-        <td data-label="Style">${r['STYLE']}</td>
-        <td data-label="Proses">${r['PROSES']}</td>
+        <td data-label="Style" title="${r['STYLE']}">${r['STYLE']}</td>
+        <td data-label="Proses" title="${r['PROSES']}">${r['PROSES']}</td>
         <td data-label="Rata-rata">${rataDisplay}</td>
         <td data-label="Capacity 100%">${capacity100 || '-'}</td>
         <td data-label="EFF">${isNaN(eff) ? '-' : `<span class="eff-pill ${effClass(eff)}">${eff.toFixed(1)}%</span>`}</td>
