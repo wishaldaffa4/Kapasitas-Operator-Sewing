@@ -2160,12 +2160,14 @@ async function renderSummarySection4(){
     const raw = o['SISA WAKTU PENETAPAN (BULAN)'];
     if(raw===undefined || raw===null || String(raw).trim()==='') return false;
     const n = Number(raw);
-    return !isNaN(n) && n >= 0 && n <= 24;
+    if(isNaN(n) || n < 0 || n > 24) return false;
+    const statusKontrak = String(o['STATUS KONTRAK']||'').trim().toUpperCase();
+    return statusKontrak === 'KONTRAK';
   });
   if(qualifyingOps.length===0){
     tbody.innerHTML='';
     empty.style.display='block';
-    empty.textContent='Tidak ada operator dengan sisa penetapan 0-24 bulan.';
+    empty.textContent='Tidak ada operator berstatus KONTRAK dengan sisa penetapan 0-24 bulan.';
     return;
   }
 
@@ -2206,7 +2208,7 @@ async function renderSummarySection4(){
     if(rows.length===0){
       tbody.innerHTML='';
       empty.style.display='block';
-      empty.textContent='Tidak ada operator dengan sisa penetapan 0-24 bulan yang punya data historis.';
+      empty.textContent='Tidak ada operator berstatus KONTRAK dengan sisa penetapan 0-24 bulan yang punya data historis.';
       return;
     }
 
