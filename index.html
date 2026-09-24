@@ -439,6 +439,25 @@ function queueDeleteKap(obj){
   pendingDeleteKap.push(obj);
   storeSet('kap_pendingDeleteKap', pendingDeleteKap, true);
 }
+/**
+ * Hapus baris Kapasitas Harian yang KOSONG (belum ada output diisi) untuk
+ * kombinasi tanggal+line+noAbsen+proses tertentu -- dipanggil setiap kali
+ * assignment terkait dihapus/diubah, supaya tidak nyangkut jadi "baris
+ * yatim" yang bisa salah dianggap "belum diisi" saat Simpan & Cetak nanti.
+ * Baris yang SUDAH ada isinya (output jam) TIDAK disentuh -- sengaja
+ * dibiarkan supaya data yang sudah diinput tidak ikut hilang.
+ */
+function cleanupOrphanedKapasitas_(tanggal, line, noAbsen, proses){
+  const idx = kapasitas.findIndex(k=>
+    k.tanggal===tanggal && k.line===line && k.noAbsen===noAbsen && k.proses===proses &&
+    (k.outputs||[]).every(v=>v===''||v===null||v===undefined)
+  );
+  if(idx === -1) return;
+  const k = kapasitas[idx];
+  if(k.synced){ queueDeleteKap({ 'ID': k.id }); }
+  kapasitas.splice(idx, 1);
+  storeSet('kap_kapasitas', kapasitas, true);
+}
 function excludePendingDeletes(){
   if(pendingDeleteAssign.length){
     const keys = new Set(pendingDeleteAssign.map(d=>`${d['TANGGAL']}||${d['NO. ABSEN']}||${d['PROSES']}`));
@@ -835,6 +854,7 @@ function deleteSelectedAssignRows(){
 
   targets.forEach(a=>{
     if(a.synced){ queueDeleteAssign({ 'TANGGAL': a.tanggal, 'NO. ABSEN': a.noAbsen, 'PROSES': a.proses }); }
+    cleanupOrphanedKapasitas_(a.tanggal, a.line, a.noAbsen, a.proses);
   });
   const targetIds = new Set(targets.map(a=>a.localId));
   assignments = assignments.filter(a=> !targetIds.has(a.localId));
@@ -890,6 +910,7 @@ function openDeleteRangeModal(tr){
     );
     toDelete.forEach(a=>{
       if(a.synced){ queueDeleteAssign({ 'TANGGAL': a.tanggal, 'NO. ABSEN': a.noAbsen, 'PROSES': a.proses }); }
+      cleanupOrphanedKapasitas_(a.tanggal, a.line, a.noAbsen, a.proses);
     });
     const deleteIds = new Set(toDelete.map(a=>a.localId));
     assignments = assignments.filter(a=>!deleteIds.has(a.localId));
@@ -1007,6 +1028,9 @@ function saveAssignmentRow(tr){
     if(becameIncomplete || prosesChanged){
       queueDeleteAssign({ 'TANGGAL': existing.tanggal, 'NO. ABSEN': existing.noAbsen, 'PROSES': oldProses });
     }
+    if(becameIncomplete){
+      cleanupOrphanedKapasitas_(existing.tanggal, existing.line, existing.noAbsen, oldProses);
+    }
 
     if(prosesChanged && style && proses){
       const oldKap = kapasitas.find(k=>k.tanggal===existing.tanggal && k.line===existing.line && k.noAbsen===existing.noAbsen && k.proses===oldProses);
@@ -1027,6 +1051,7 @@ function removeAssignmentRow(tr){
   const target = assignments.find(a=>a.localId===rid);
   if(target && target.style && target.proses){
     queueDeleteAssign({ 'TANGGAL': target.tanggal, 'NO. ABSEN': target.noAbsen, 'PROSES': target.proses });
+    cleanupOrphanedKapasitas_(target.tanggal, target.line, target.noAbsen, target.proses);
   }
   assignments = assignments.filter(a=>a.localId!==rid);
   storeSet('kap_assignments', assignments, true);
@@ -1591,6 +1616,7 @@ function openBulkDeleteModal(){
 
     matched.forEach(a=>{
       if(a.synced){ queueDeleteAssign({ 'TANGGAL': a.tanggal, 'NO. ABSEN': a.noAbsen, 'PROSES': a.proses }); }
+      cleanupOrphanedKapasitas_(a.tanggal, a.line, a.noAbsen, a.proses);
     });
     const deleteIds = new Set(matched.map(a=>a.localId));
     assignments = assignments.filter(a=>!deleteIds.has(a.localId));
@@ -1673,6 +1699,7 @@ function openDedupModal(){
     const toDelete = assignments.filter(a=> idsToDelete.includes(a.localId));
     toDelete.forEach(a=>{
       if(a.synced){ queueDeleteAssign({ 'TANGGAL': a.tanggal, 'NO. ABSEN': a.noAbsen, 'PROSES': a.proses }); }
+      cleanupOrphanedKapasitas_(a.tanggal, a.line, a.noAbsen, a.proses);
     });
     const deleteIdSet = new Set(idsToDelete);
     assignments = assignments.filter(a=> !deleteIdSet.has(a.localId));
@@ -2783,7 +2810,20 @@ function removeAssignmentFor(date, noAbsen, proses, line){
 function handleSaveKapClick(){
   const date = document.getElementById('kapDate').value;
   const line = document.getElementById('kapLine').value;
-  const unfilled = kapasitas.filter(k=>k.tanggal===date && k.line===line && (k.outputs||[]).every(v=>v===''||v===null||v===undefined));
+  // PENTING: cuma anggap "belum diisi" kalau operator itu memang MASIH
+  // ter-assign untuk tanggal+line ini sekarang. Baris kapasitas kosong yang
+  // assignment-nya sudah dihapus/diubah (jadi "yatim", tidak lagi tampil di
+  // tabel) diabaikan di sini, supaya tidak salah menganggu proses simpan.
+  const assignedKeys = new Set(
+    assignments
+      .filter(a=>a.tanggal===date && a.line===line && a.style && a.proses)
+      .map(a=>`${a.noAbsen}||${a.proses}`)
+  );
+  const unfilled = kapasitas.filter(k=>
+    k.tanggal===date && k.line===line &&
+    assignedKeys.has(`${k.noAbsen}||${k.proses}`) &&
+    (k.outputs||[]).every(v=>v===''||v===null||v===undefined)
+  );
   if(unfilled.length === 0){
     syncNow('kapSaveMsg');
     return;
