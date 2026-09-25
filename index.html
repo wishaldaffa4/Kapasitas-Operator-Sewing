@@ -26,6 +26,10 @@
   nav button.active{background:var(--accent);color:#0b1420;border-color:var(--accent);font-weight:600;}
   .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;margin-bottom:14px;overflow:hidden;}
   .panel-title{padding:11px 16px;font-size:12px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid var(--border);}
+  .panel-title.collapsible{cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center;gap:10px;}
+  .panel-title.collapsible:hover{color:var(--text);}
+  .panel-toggle-icon{font-size:10px;color:var(--text-dim);transition:transform .15s;flex-shrink:0;}
+  .panel-toggle-icon.open{transform:rotate(90deg);}
   .panel-body{padding:16px;}
   input, select{background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:7px 9px;border-radius:6px;font-size:13px;outline:none;}
   input:focus, select:focus{border-color:var(--accent);}
@@ -273,6 +277,24 @@
         </div>
         <div class="hint" style="margin-bottom:10px;">Tanggal &amp; filter Line ini juga dipakai untuk poin 5 di bawah. Ganti tanggal lalu klik "Tampilkan" untuk memuat ulang; ganti Filter Line langsung otomatis (tidak perlu klik apa-apa). Filter Line/Kategori khusus cetak di atas TIDAK memengaruhi tampilan layar, cuma menyaring yang benar-benar terkirim ke Sheet (kosongkan untuk cetak semua).</div>
         <div id="sumBelajarBisaArea"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">⚠️ Operator Sudah Dipanggil ≥3 Kali (dari sheet Pemanggilan OPT)</div>
+      <div class="panel-body">
+        <div class="row" style="margin-bottom:10px;">
+          <button class="secondary" id="sumPemanggilanRefreshBtn">🔄 Muat ulang</button>
+          <span class="hint" id="sumPemanggilanMsg" style="align-self:center;"></span>
+        </div>
+        <div class="hint" style="margin-bottom:10px;">Tidak terikat tanggal — selalu kondisi terkini di sheet Pemanggilan OPT, 1 baris per operator (total pemanggilan tertinggi/terbaru).</div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>No. Absen</th><th>Nama</th><th>Line</th><th>Total Dipanggil</th><th>Tanggal Terakhir</th></tr></thead>
+            <tbody id="sumPemanggilanBody"></tbody>
+          </table>
+        </div>
+        <div class="empty" id="sumPemanggilanEmpty" style="display:none;">Belum ada operator yang dipanggil 3 kali atau lebih.</div>
       </div>
     </div>
 
@@ -2379,11 +2401,53 @@ async function renderOperatorTrend(){
   msg.textContent = `${rows.length} baris ditemukan pada rentang ${fmtDate(fromDate)} - ${fmtDate(toDate)}.`;
 }
 
+async function renderPemanggilanOptSummary(){
+  const msg = document.getElementById('sumPemanggilanMsg');
+  const tbody = document.getElementById('sumPemanggilanBody');
+  const empty = document.getElementById('sumPemanggilanEmpty');
+  msg.textContent = 'Memuat dari sheet Pemanggilan OPT...';
+
+  let rows;
+  try{
+    rows = await gasGet('getPemanggilanOptSummary');
+  }catch(e){
+    msg.textContent = 'Gagal memuat: ' + e.message;
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    empty.textContent = 'Gagal memuat data dari sheet Pemanggilan OPT.';
+    return;
+  }
+
+  rows.sort((a,b)=> b['TOTAL PEMANGGILAN'] - a['TOTAL PEMANGGILAN']);
+
+  if(rows.length===0){
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    empty.textContent = 'Belum ada operator yang dipanggil 3 kali atau lebih.';
+    msg.textContent = '';
+    return;
+  }
+
+  empty.style.display = 'none';
+  tbody.innerHTML = rows.map(r=>`
+    <tr>
+      <td data-label="No. Absen">${r['NIP']}</td>
+      <td data-label="Nama">${r['NAMA']}</td>
+      <td data-label="Line">${r['LINE'] || '-'}</td>
+      <td data-label="Total Dipanggil"><span class="eff-pill eff-bad">${r['TOTAL PEMANGGILAN']}x</span></td>
+      <td data-label="Tanggal Terakhir">${r['TANGGAL'] ? fmtDate(r['TANGGAL']) : '-'}</td>
+    </tr>
+  `).join('');
+  msg.textContent = `${rows.length} operator ditemukan.`;
+}
+document.getElementById('sumPemanggilanRefreshBtn').addEventListener('click', renderPemanggilanOptSummary);
+
 function renderSummaryTab(){
   renderSummarySection1();
   renderSummarySection2();
   renderSection3And5();
   renderSummarySection4();
+  renderPemanggilanOptSummary();
   if(!trendOperatorMSInited && dataOpt.length){
     const operatorOptions = dataOpt.map(o=> `${o['NIP']} - ${o['NAMA']}`).sort();
     trendOperatorMS = createMultiSelect('trendOperatorMS', 'Operator', operatorOptions);
@@ -3072,6 +3136,31 @@ async function init(){
 
   setInterval(()=>{ if(config.gasUrl) syncNow(); }, 5*60*1000);
 }
+/* ---------- Panel bisa dilipat (accordion) khusus tab Summary ---------- */
+function initCollapsiblePanels(){
+  document.querySelectorAll('#tab-summary > .panel').forEach(panel=>{
+    const title = panel.querySelector('.panel-title');
+    if(!title) return;
+    title.classList.add('collapsible');
+
+    const icon = document.createElement('span');
+    icon.className = 'panel-toggle-icon';
+    icon.textContent = '▶';
+    title.appendChild(icon);
+
+    const contentEls = [...panel.children].filter(el=> el !== title);
+    contentEls.forEach(el=> el.style.display = 'none'); // default tertutup
+
+    title.addEventListener('click', ()=>{
+      const willOpen = !icon.classList.contains('open');
+      icon.classList.toggle('open', willOpen);
+      icon.textContent = willOpen ? '▼' : '▶';
+      contentEls.forEach(el=> el.style.display = willOpen ? '' : 'none');
+    });
+  });
+}
+initCollapsiblePanels();
+
 init();
 </script>
 </body>
