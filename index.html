@@ -2124,11 +2124,28 @@ function renderSummarySection3(rows, dateStr, area){
     `;
 
     return `<div style="margin-bottom:20px;">
-      <div style="font-weight:600;color:var(--accent);margin-bottom:6px;">${line} (${items.length} operator)</div>
-      ${summaryHtml}
-      ${tableHtml}
+      <div class="line-toggle-header" style="font-weight:600;color:var(--accent);margin-bottom:6px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;">
+        <span class="line-toggle-icon">▶</span> ${line} (${items.length} operator)
+      </div>
+      <div style="display:none;">
+        ${summaryHtml}
+        ${tableHtml}
+      </div>
     </div>`;
   }).join('');
+  wireLineToggles(area);
+}
+
+function wireLineToggles(container){
+  container.querySelectorAll('.line-toggle-header').forEach(header=>{
+    const content = header.nextElementSibling;
+    const icon = header.querySelector('.line-toggle-icon');
+    header.addEventListener('click', ()=>{
+      const willOpen = content.style.display === 'none';
+      content.style.display = willOpen ? '' : 'none';
+      if(icon) icon.textContent = willOpen ? '▼' : '▶';
+    });
+  });
 }
 
 function renderSummarySection5(rows, dateStr, area){
@@ -2161,8 +2178,14 @@ function renderSummarySection5(rows, dateStr, area){
         </div>
       `;
     }).join('');
-    return `<div style="margin-bottom:16px;"><div style="font-weight:600;color:var(--accent);margin-bottom:6px;">${line}</div>${prosesRows}</div>`;
+    return `<div style="margin-bottom:16px;">
+      <div class="line-toggle-header" style="font-weight:600;color:var(--accent);margin-bottom:6px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;">
+        <span class="line-toggle-icon">▶</span> ${line}
+      </div>
+      <div style="display:none;">${prosesRows}</div>
+    </div>`;
   }).join('');
+  wireLineToggles(area);
 }
 
 let bestPerformanceCache = null;
