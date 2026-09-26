@@ -270,12 +270,12 @@
           <span class="hint" id="sumHistMsg" style="align-self:center;"></span>
         </div>
         <div class="row" style="margin-bottom:12px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;">
-          <span class="hint" style="align-self:center;font-weight:600;color:var(--text);">Khusus untuk Cetak ke Sheet:</span>
-          <div class="field" style="min-width:180px;" id="cetakLineMS"></div>
-          <div class="field" style="min-width:180px;" id="cetakKategoriMS"></div>
-          <div class="field"><label>&nbsp;</label><button class="secondary" id="printKesimpulanBtn">📋 Cetak ke Sheet (Pemanggilan OPT)</button></div>
+          <span class="hint" style="align-self:center;font-weight:600;color:var(--text);">Pemanggilan operator:</span>
+          <button class="secondary small" id="centangSemuaBtn">Centang Semua</button>
+          <button class="secondary small" id="kosongkanSemuaBtn">Kosongkan Semua</button>
+          <button class="secondary" id="printKesimpulanBtn">📋 Cetak ke Sheet (Pemanggilan OPT)</button>
         </div>
-        <div class="hint" style="margin-bottom:10px;">Tanggal &amp; filter Line ini juga dipakai untuk poin 5 di bawah. Ganti tanggal lalu klik "Tampilkan" untuk memuat ulang; ganti Filter Line langsung otomatis (tidak perlu klik apa-apa). Filter Line/Kategori khusus cetak di atas TIDAK memengaruhi tampilan layar, cuma menyaring yang benar-benar terkirim ke Sheet (kosongkan untuk cetak semua).</div>
+        <div class="hint" style="margin-bottom:10px;">Tanggal &amp; filter Line ini juga dipakai untuk poin 5 di bawah. Ganti tanggal lalu klik "Tampilkan" untuk memuat ulang; ganti Filter Line langsung otomatis (tidak perlu klik apa-apa). Centang operator di tabel detail (bukan kotak Kesimpulan) untuk menandai "sudah dipanggil" -- cuma yang tercentang yang ikut tercetak ke Sheet. Yang sudah pernah tercetak otomatis terkunci, tidak bisa dicentang ulang (mencegah dobel hitung).</div>
         <div id="sumBelajarBisaArea"></div>
       </div>
     </div>
@@ -1880,31 +1880,19 @@ let historicalByDateCache = { date: null, rows: null };
 let lastKesimpulanData = { dateStr: null, items: [] };
 
 async function cetakKesimpulanKeSheet(){
-  if(!lastKesimpulanData.items.length){
-    alert('Belum ada data Kesimpulan untuk dicetak. Pastikan poin 3 sudah menampilkan data (pilih tanggal yang ada operator kategori Belajar/Bisa-nya).');
+  const checkedItems = lastDetailTableData.items.filter(o=> pemanggilanChecklist[o._key] === 'checked');
+  if(checkedItems.length === 0){
+    alert('Belum ada operator yang dicentang untuk dicetak. Centang dulu operatornya di tabel detail poin 3 (bukan kotak Kesimpulan).');
     return;
   }
-  const { dateStr, items } = lastKesimpulanData;
   const msg = document.getElementById('sumHistMsg');
-
-  const selectedLines = cetakLineMS ? cetakLineMS.getSelected() : [];
-  const selectedKategori = cetakKategoriMS ? cetakKategoriMS.getSelected() : [];
-  let filteredItems = items;
-  if(selectedLines.length) filteredItems = filteredItems.filter(o=> selectedLines.includes(o.line));
-  if(selectedKategori.length) filteredItems = filteredItems.filter(o=> selectedKategori.includes(o.label));
-
-  if(filteredItems.length===0){
-    alert('Tidak ada baris yang cocok dengan filter Line/Kategori khusus cetak ini. Longgarkan filternya dulu.');
-    return;
-  }
-
   msg.textContent = 'Mengirim ke sheet Pemanggilan OPT...';
 
-  const sheetRows = filteredItems.map(o=>{
+  const sheetRows = checkedItems.map(o=>{
     const capacity100 = lookupSmv(o.style, o.proses);
     const rataDisplay = (o.rata!=='' && !isNaN(Number(o.rata))) ? Math.round(Number(o.rata)) : '';
     return {
-      'TANGGAL': fmtDate(dateStr),
+      'TANGGAL': fmtDate(lastDetailTableData.dateStr),
       'NIP': o.noAbsen,
       'NAMA': o.nama,
       'LINE': o.line,
@@ -1919,6 +1907,9 @@ async function cetakKesimpulanKeSheet(){
 
   try{
     await gasPost('appendPemanggilanOpt', sheetRows);
+    checkedItems.forEach(o=>{ pemanggilanChecklist[o._key] = 'printed'; });
+    await storeSet('kap_pemanggilanChecklist', pemanggilanChecklist, true);
+    markPemanggilanPrinted(checkedItems.map(o=>o._key));
     msg.textContent = `${sheetRows.length} baris berhasil dicetak ke sheet Pemanggilan OPT.`;
   }catch(e){
     msg.textContent = 'Gagal mencetak ke sheet: ' + e.message;
@@ -2011,6 +2002,7 @@ function prosesPriority_(proses){
 
 function renderSummarySection3(rows, dateStr, area){
   lastKesimpulanData = { dateStr, items: [] };
+  lastDetailTableData = { dateStr, items: [] };
   if(!rows.length){ area.innerHTML = '<div class="hint">Tidak ada data di DATA LOOKER untuk tanggal ini.</div>'; return; }
 
   const byLine = {};
@@ -2049,11 +2041,23 @@ function renderSummarySection3(rows, dateStr, area){
         bestPerCategory[p] = item;
       }
     });
-    function buildRowTr(o, extraLabel){
+    function buildRowTr(o, extraLabel, withCheckbox){
       const capacity100 = lookupSmv(o.style, o.proses);
       const rataDisplay = (o.rata!=='' && !isNaN(Number(o.rata))) ? Math.round(Number(o.rata)) : '-';
+      let checkboxCell = '';
+      if(withCheckbox){
+        const key = `${dateStr}||${o.noAbsen}||${line}||${o.proses}`;
+        lastDetailTableData.items.push({ ...o, line, _key: key });
+        const status = pemanggilanChecklist[key];
+        if(status === 'printed'){
+          checkboxCell = `<td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;text-align:center;"><span class="eff-pill eff-good" style="font-size:10px;">✓ Dicetak</span></td>`;
+        }else{
+          checkboxCell = `<td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;text-align:center;"><input type="checkbox" class="pemanggilan-check" data-key="${key}" ${status==='checked'?'checked':''}></td>`;
+        }
+      }
       return `
         <tr>
+          ${checkboxCell}
           ${extraLabel!==undefined ? `<td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;font-weight:600;color:var(--accent);">${extraLabel}</td>` : ''}
           <td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;">${fmtDate(dateStr)}</td>
           <td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;">${o.noAbsen}</td>
@@ -2099,13 +2103,14 @@ function renderSummarySection3(rows, dateStr, area){
         </div>`
       : '';
 
-    const tableRows = items.map(o=> buildRowTr(o)).join('');
+    const tableRows = items.map(o=> buildRowTr(o, undefined, true)).join('');
 
     const tableHtml = `
       <div style="overflow-x:auto;">
         <table style="width:100%;border-collapse:collapse;font-size:12px;">
           <thead>
             <tr style="background:var(--panel2);">
+              <th style="padding:5px 6px;text-align:center;white-space:nowrap;">Panggil</th>
               <th style="padding:5px 6px;text-align:left;white-space:nowrap;">Tanggal</th>
               <th style="padding:5px 6px;text-align:left;white-space:nowrap;">No. Absen</th>
               <th style="padding:5px 6px;text-align:left;white-space:nowrap;">Nama</th>
@@ -2134,6 +2139,28 @@ function renderSummarySection3(rows, dateStr, area){
     </div>`;
   }).join('');
   wireLineToggles(area);
+  wirePemanggilanCheckboxes(area);
+}
+
+function wirePemanggilanCheckboxes(container){
+  container.querySelectorAll('.pemanggilan-check').forEach(cb=>{
+    cb.addEventListener('change', ()=>{
+      const key = cb.getAttribute('data-key');
+      if(cb.checked){ pemanggilanChecklist[key] = 'checked'; }
+      else{ delete pemanggilanChecklist[key]; }
+      storeSet('kap_pemanggilanChecklist', pemanggilanChecklist, true);
+    });
+  });
+}
+
+function markPemanggilanPrinted(keys){
+  keys.forEach(key=>{
+    const cb = document.querySelector(`.pemanggilan-check[data-key="${CSS.escape(key)}"]`);
+    if(cb){
+      const td = cb.closest('td');
+      td.innerHTML = '<span class="eff-pill eff-good" style="font-size:10px;">✓ Dicetak</span>';
+    }
+  });
 }
 
 function wireLineToggles(container){
@@ -2318,9 +2345,8 @@ function renderTrendChart(containerId, series, dates){
 
 let trendOperatorMS = null;
 let trendOperatorMSInited = false;
-let cetakLineMS = null;
-let cetakKategoriMS = null;
-let cetakFilterMSInited = false;
+let pemanggilanChecklist = {}; // key: "tanggal||noAbsen||line||proses" -> "checked" | "printed"
+let lastDetailTableData = { dateStr: null, items: [] };
 
 async function renderOperatorTrend(){
   const fromDate = document.getElementById('trendFromDate').value;
@@ -2475,11 +2501,6 @@ function renderSummaryTab(){
     const operatorOptions = dataOpt.map(o=> `${o['NIP']} - ${o['NAMA']}`).sort();
     trendOperatorMS = createMultiSelect('trendOperatorMS', 'Operator', operatorOptions);
     trendOperatorMSInited = true;
-  }
-  if(!cetakFilterMSInited){
-    cetakLineMS = createMultiSelect('cetakLineMS', 'Line', LINES.slice());
-    cetakKategoriMS = createMultiSelect('cetakKategoriMS', 'Kategori', ['Ibu Jari','Elastic','Machi','Lipat','Pita']);
-    cetakFilterMSInited = true;
   }
 }
 
@@ -3058,6 +3079,20 @@ document.getElementById('sumSkillDate').addEventListener('change', renderSummary
 document.getElementById('sumHistShowBtn').addEventListener('click', renderSection3And5);
 document.getElementById('sumHistLineFilter').addEventListener('change', refilterSection3And5ByLine);
 document.getElementById('printKesimpulanBtn').addEventListener('click', cetakKesimpulanKeSheet);
+document.getElementById('centangSemuaBtn').addEventListener('click', ()=>{
+  document.querySelectorAll('#sumBelajarBisaArea .pemanggilan-check').forEach(cb=>{
+    cb.checked = true;
+    pemanggilanChecklist[cb.getAttribute('data-key')] = 'checked';
+  });
+  storeSet('kap_pemanggilanChecklist', pemanggilanChecklist, true);
+});
+document.getElementById('kosongkanSemuaBtn').addEventListener('click', ()=>{
+  document.querySelectorAll('#sumBelajarBisaArea .pemanggilan-check').forEach(cb=>{
+    cb.checked = false;
+    delete pemanggilanChecklist[cb.getAttribute('data-key')];
+  });
+  storeSet('kap_pemanggilanChecklist', pemanggilanChecklist, true);
+});
 document.getElementById('trendShowBtn').addEventListener('click', renderOperatorTrend);
 document.getElementById('sumRefreshBtn').addEventListener('click', async ()=>{
   const msg = document.getElementById('sumRefreshMsg');
@@ -3138,6 +3173,7 @@ async function init(){
   kapasitas = (await storeGet('kap_kapasitas', true)) || [];
   pendingDeleteAssign = (await storeGet('kap_pendingDeleteAssign', true)) || [];
   pendingDeleteKap = (await storeGet('kap_pendingDeleteKap', true)) || [];
+  pemanggilanChecklist = (await storeGet('kap_pemanggilanChecklist', true)) || {};
 
   const uiState = await loadUiState();
   applyUiStateValues(uiState);
