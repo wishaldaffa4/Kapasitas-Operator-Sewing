@@ -600,7 +600,21 @@ function normalizeDate_(v){
   return String(v);
 }
 
-async function syncNow(evtOrMsgElId){
+// PENTING: syncNow() dibungkus jadi antrian -- kalau ada beberapa aksi yang
+// masing-masing otomatis memicu sync (Hapus massal, Salin ke tanggal lain,
+// Bersihkan duplikat, dll) diklik berturut-turut dengan cepat, permintaan
+// sinkronnya TIDAK boleh tumpang tindih terkirim bersamaan (bisa memperberat
+// koneksi yang lemah dan bikin makin gampang "NetworkError"). Semua
+// permintaan diantre, diproses satu-satu secara berurutan.
+let syncChain = Promise.resolve();
+function syncNow(evtOrMsgElId){
+  const run = () => doSyncNow(evtOrMsgElId);
+  const next = syncChain.then(run, run);
+  syncChain = next.catch(()=>{});
+  return next;
+}
+
+async function doSyncNow(evtOrMsgElId){
   const msgElId = typeof evtOrMsgElId === 'string' ? evtOrMsgElId : null;
   const setMsg = (t)=>{ if(msgElId){ const el=document.getElementById(msgElId); if(el) el.textContent = t; } };
   if(!config.gasUrl){ setSyncStatus('bad','URL belum diatur'); setMsg('Gagal: URL Apps Script belum diatur di tab Pengaturan.'); return; }
