@@ -1120,15 +1120,50 @@ function applyCopyRange(){
   document.getElementById('copyPanel').style.display='none';
 
   setTimeout(()=>{
+    // Kumpulkan semua tanggal tujuan dulu
+    const destDates = [];
+    let curD = new Date(fromDate); curD.setDate(curD.getDate()+1);
+    const endD = new Date(toDate);
+    while(curD <= endD){ destDates.push(curD.toISOString().slice(0,10)); curD.setDate(curD.getDate()+1); }
+    const destDateSet = new Set(destDates);
+
+    // Kelompokkan sumber per No.Absen -> daftar Proses yang berlaku SAAT INI.
+    // Dipakai untuk membersihkan peninggalan Proses LAMA milik operator yang
+    // sama di tanggal tujuan (misal dari salinan sebelumnya yang sumbernya
+    // sudah berubah) -- kalau tidak dibersihkan, operator itu akan muncul
+    // DOBEL (Proses lama + Proses baru) di tanggal tujuan.
+    const sourceByNip = new Map();
+    source.forEach(s=>{
+      if(!sourceByNip.has(s.noAbsen)) sourceByNip.set(s.noAbsen, new Set());
+      sourceByNip.get(s.noAbsen).add(s.proses);
+    });
+
+    const staleEntries = assignments.filter(a=>
+      destDateSet.has(a.tanggal) &&
+      sourceByNip.has(a.noAbsen) &&
+      !sourceByNip.get(a.noAbsen).has(a.proses)
+    );
+    const staleIdsToRemove = [];
+    staleEntries.forEach(stale=>{
+      // Pengaman: kalau peninggalan lama ini SUDAH ada output terisi (data
+      // asli, bukan baris kosong), JANGAN dihapus -- lebih baik biarkan
+      // (walau berarti tetap dobel di kasus langka ini) daripada berisiko
+      // menghapus data yang sudah diinput.
+      const kapRow = kapasitas.find(k=> k.tanggal===stale.tanggal && k.line===stale.line && k.noAbsen===stale.noAbsen && k.proses===stale.proses);
+      const hasOutput = kapRow && (kapRow.outputs||[]).some(v=>v!=='' && v!=null);
+      if(hasOutput) return;
+      if(stale.synced){ queueDeleteAssign({ 'TANGGAL': stale.tanggal, 'NO. ABSEN': stale.noAbsen, 'PROSES': stale.proses }); }
+      cleanupOrphanedKapasitas_(stale.tanggal, stale.line, stale.noAbsen, stale.proses);
+      staleIdsToRemove.push(stale.localId);
+    });
+    const staleIds = new Set(staleIdsToRemove);
+    assignments = assignments.filter(a=> !staleIds.has(a.localId));
+
     const assignIndex = new Map();
     assignments.forEach(a=> assignIndex.set(`${a.tanggal}||${a.noAbsen}||${a.proses}`, a));
 
-    let cur = new Date(fromDate);
-    cur.setDate(cur.getDate()+1);
-    const end = new Date(toDate);
     let copiedCount = 0;
-    while(cur <= end){
-      const dStr = cur.toISOString().slice(0,10);
+    destDates.forEach(dStr=>{
       source.forEach(s=>{
         const key = `${dStr}||${s.noAbsen}||${s.proses}`;
         const already = assignIndex.get(key);
@@ -1141,11 +1176,10 @@ function applyCopyRange(){
         }
         copiedCount++;
       });
-      cur.setDate(cur.getDate()+1);
-    }
+    });
     storeSet('kap_assignments', assignments, true);
     renderAssignmentTable();
-    msgEl.textContent = `${copiedCount} baris tersalin, menyinkronkan...`;
+    msgEl.textContent = `${copiedCount} baris tersalin (${staleEntries.length} peninggalan lama dibersihkan), menyinkronkan...`;
     syncNow('assignSaveMsg');
   }, 30);
 }
