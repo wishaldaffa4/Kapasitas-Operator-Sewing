@@ -1138,11 +1138,12 @@ function applyCopyRange(){
       sourceByNip.get(s.noAbsen).add(s.proses);
     });
 
-    const staleEntries = assignments.filter(a=>
-      destDateSet.has(a.tanggal) &&
-      sourceByNip.has(a.noAbsen) &&
-      !sourceByNip.get(a.noAbsen).has(a.proses)
-    );
+    const staleEntries = assignments.filter(a=>{
+      if(!destDateSet.has(a.tanggal)) return false;
+      if(scope==='active' && a.line!==activeLine) return false; // di luar cakupan operasi salin ini, jangan disentuh
+      if(!sourceByNip.has(a.noAbsen)) return true; // operator ini sudah dihapus total dari sumber
+      return !sourceByNip.get(a.noAbsen).has(a.proses); // masih ada, tapi prosesnya sudah beda dari sumber
+    });
     const staleIdsToRemove = [];
     staleEntries.forEach(stale=>{
       // Pengaman: kalau peninggalan lama ini SUDAH ada output terisi (data
