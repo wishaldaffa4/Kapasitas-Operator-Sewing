@@ -252,10 +252,11 @@
       <div class="panel-body">
         <div class="row" style="margin-bottom:12px;">
           <div class="field"><label>Tanggal</label><input type="date" id="sumSkillDate"></div>
+          <div class="field"><label>&nbsp;</label><button id="sumSkillShowBtn">Tampilkan</button></div>
         </div>
         <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:center;">
           <div id="sumSkillChart"></div>
-          <div id="sumSkillLegend" style="font-size:13px;"></div>
+          <div id="sumSkillLegend" style="font-size:13px;">Klik "Tampilkan" untuk memuat data.</div>
         </div>
       </div>
     </div>
@@ -276,7 +277,7 @@
           <button class="secondary" id="printKesimpulanBtn">📋 Cetak ke Sheet (Pemanggilan OPT)</button>
         </div>
         <div class="hint" style="margin-bottom:10px;">Tanggal &amp; filter Line ini juga dipakai untuk poin 5 di bawah. Ganti tanggal lalu klik "Tampilkan" untuk memuat ulang; ganti Filter Line langsung otomatis (tidak perlu klik apa-apa). Centang operator di tabel detail (bukan kotak Kesimpulan) untuk menandai "sudah dipanggil" -- cuma yang tercentang yang ikut tercetak ke Sheet. Yang sudah pernah tercetak otomatis terkunci, tidak bisa dicentang ulang (mencegah dobel hitung).</div>
-        <div id="sumBelajarBisaArea"></div>
+        <div id="sumBelajarBisaArea"><div class="hint">Klik "Tampilkan" untuk memuat data.</div></div>
       </div>
     </div>
 
@@ -311,7 +312,7 @@
 
     <div class="panel">
       <div class="panel-title">5. Jumlah Kapasitas per Proses per Line (dari DATA LOOKER, tanggal sama dengan poin 3)</div>
-      <div class="panel-body" id="sumKapasitasArea"></div>
+      <div class="panel-body" id="sumKapasitasArea"><div class="hint">Klik "Tampilkan" di poin 3 untuk memuat data (tanggal sama dengan poin 3).</div></div>
     </div>
 
     <div class="panel">
@@ -806,8 +807,6 @@ function renderAssignmentTable(){
         <td data-label="Proses"><input class="proses-input a-proses" list="${prosesDlId}" value="${r.proses||''}" placeholder="Cari proses..."><span class="proses-warn-icon" style="display:none;" title="Proses ini tidak ditemukan di Data SMV untuk Style yang dipilih">⚠</span></td>
         <td data-label="">
           <button class="secondary small a-addrow" title="Tambah proses lain untuk operator ini">+ Proses</button>
-          ${r.localId ? '<button class="danger small a-remove" style="margin-left:4px;">Hapus</button>' : ''}
-          ${r.localId ? '<button class="danger small a-remove-range" style="margin-left:4px;" title="Hapus assignment operator ini (proses yang sama) dari tanggal ini sampai tanggal pilihan">Hapus s/d...</button>' : ''}
         </td>
       </tr>
     `;
@@ -854,10 +853,6 @@ function renderAssignmentTable(){
     tr.querySelector('.a-line').addEventListener('change', ()=> saveAssignmentRow(tr));
     styleInput.addEventListener('paste', (e)=> handleColumnPaste(e, '.a-style'));
     prosesInput.addEventListener('paste', (e)=> handleColumnPaste(e, '.a-proses'));
-    const removeBtn = tr.querySelector('.a-remove');
-    if(removeBtn) removeBtn.addEventListener('click', ()=> removeAssignmentRow(tr));
-    const removeRangeBtn = tr.querySelector('.a-remove-range');
-    if(removeRangeBtn) removeRangeBtn.addEventListener('click', ()=> openDeleteRangeModal(tr));
     tr.querySelector('.a-addrow').addEventListener('click', ()=>{
       const noAbsen = tr.getAttribute('data-noabsen');
       const nama = tr.getAttribute('data-nama');
@@ -2542,8 +2537,6 @@ document.getElementById('sumPemanggilanRefreshBtn').addEventListener('click', re
 
 function renderSummaryTab(){
   renderSummarySection1();
-  renderSummarySection2();
-  renderSection3And5();
   renderSummarySection4();
   renderPemanggilanOptSummary();
   if(!trendOperatorMSInited && dataOpt.length){
@@ -2994,7 +2987,7 @@ function openUnfilledModal(unfilledList, date, line){
   backdrop.innerHTML = `
     <div class="modal" style="width:640px;max-height:80vh;overflow-y:auto;">
       <h3>Ada ${unfilledList.length} operator belum diisi output (${fmtDate(date)}, ${line})</h3>
-      <div class="hint" style="margin-bottom:10px;">Pilih status untuk tiap operator sebelum lanjut menyimpan, atau kembali dulu untuk mengisi outputnya.</div>
+      <div class="hint" style="margin-bottom:10px;">Pilih status kalau perlu (Sakit/Izin/Cuti/Pindah), atau biarkan kosong dan langsung klik "Lanjut & simpan" -- operator yang dibiarkan kosong statusnya tetap tersimpan apa adanya (kosong).</div>
       <div id="unfilledList"></div>
       <div class="modal-actions">
         <button class="secondary" id="unfilledBack">Kembali mengisi</button>
@@ -3066,11 +3059,9 @@ function openUnfilledModal(unfilledList, date, line){
 
   document.getElementById('unfilledProceed').addEventListener('click', ()=>{
     const rows = [...listEl.querySelectorAll('[data-row]')];
-    const missing = rows.filter(r => r.querySelector('.unfilled-status').value === '');
-    if(missing.length > 0){
-      alert('Masih ada operator yang belum dipilih statusnya. Pilih status untuk semua operator dulu.');
-      return;
-    }
+    // Tidak lagi wajib pilih status untuk semua operator -- yang dibiarkan
+    // kosong statusnya akan tetap tersimpan APA ADANYA (kosong), tidak
+    // diubah/dihapus apa pun. User bisa langsung lanjut simpan kapan saja.
 
     rows.forEach(rowEl=>{
       const id = rowEl.getAttribute('data-id');
@@ -3124,7 +3115,7 @@ document.getElementById('assignLineFilter').addEventListener('change', renderAss
 document.getElementById('kapDate').addEventListener('change', renderKapasitasTable);
 document.getElementById('kapLine').addEventListener('change', renderKapasitasTable);
 document.getElementById('kapSearch').addEventListener('input', renderKapasitasTable);
-document.getElementById('sumSkillDate').addEventListener('change', renderSummarySection2);
+document.getElementById('sumSkillShowBtn').addEventListener('click', renderSummarySection2);
 document.getElementById('sumHistShowBtn').addEventListener('click', renderSection3And5);
 document.getElementById('sumHistLineFilter').addEventListener('change', refilterSection3And5ByLine);
 document.getElementById('printKesimpulanBtn').addEventListener('click', cetakKesimpulanKeSheet);
