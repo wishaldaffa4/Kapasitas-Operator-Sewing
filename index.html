@@ -3187,7 +3187,8 @@ function renderEvaluasiAll(){
       eff: effVal,
       statusPenetapan: statusSisaPenetapan(isNaN(sisaBulan) ? null : sisaBulan, op['STATUS KONTRAK']),
       statusSkill: statusLevelSkill(levelSkillVal),
-      statusEff: statusEfisiensi(effVal)
+      statusEff: statusEfisiensi(effVal),
+      isTetap: String(op['STATUS KONTRAK']||'').trim().toUpperCase() === 'TETAP'
     };
   }).filter(r=> r.eff !== null); // cuma operator yang punya histori performa 3 bulan terakhir
 
@@ -3217,6 +3218,10 @@ function renderEvaluasiBagian2And3(){
 
   const PENETAPAN_ORDER = { URGENT:0, PRIORITAS:1, AMAN:2 };
   rows.sort((a,b)=>{
+    // Operator TETAP selalu didorong ke PALING BAWAH, di bawah semua operator
+    // KONTRAK -- walau badge Status Penetapan-nya sama-sama "Aman". Ini cuma
+    // soal urutan tampilan, bukan kategorinya.
+    if(a.isTetap !== b.isTetap) return a.isTetap ? 1 : -1;
     // Urutkan berdasarkan KATEGORI Status Penetapan dulu (Urgent -> Prioritas
     // -> Aman), BUKAN angka sisa bulan mentah -- supaya operator yang masih
     // berstatus KONTRAK dan Urgent selalu di atas, tidak kalah oleh operator
