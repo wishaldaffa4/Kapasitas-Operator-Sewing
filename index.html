@@ -3084,9 +3084,13 @@ function computeEval3MonthRange(){
 }
 
 function statusSisaPenetapan(bulan, statusKontrak){
+  // Operator yang sudah berstatus TETAP tidak lagi relevan dievaluasi soal
+  // "sisa waktu penetapan" -- langsung dianggap Aman, berapa pun sisa
+  // bulannya (biasanya memang sudah tidak terisi untuk kasus TETAP).
+  const kontrakUpper = String(statusKontrak||'').trim().toUpperCase();
+  if(kontrakUpper === 'TETAP') return 'AMAN';
   if(bulan===null || bulan===undefined || isNaN(bulan)) return null;
-  const isKontrak = String(statusKontrak||'').trim().toUpperCase() === 'KONTRAK';
-  if(bulan<=18) return isKontrak ? 'URGENT' : 'PRIORITAS';
+  if(bulan<=18) return 'URGENT';
   if(bulan<=23) return 'PRIORITAS';
   return 'AMAN';
 }
