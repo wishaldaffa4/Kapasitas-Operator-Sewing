@@ -3113,6 +3113,12 @@ function statusBadgeHtml(status){
   const label = status==='URGENT' ? '🔴 Urgent' : (status==='PRIORITAS' ? '🟡 Prioritas' : '🟢 Aman');
   return `<span class="eff-pill ${cls}">${label}</span>`;
 }
+function statusEffClass(status){
+  if(status==='URGENT') return 'eff-bad';
+  if(status==='PRIORITAS') return 'eff-warn';
+  if(status==='AMAN') return 'eff-good';
+  return '';
+}
 
 // Kelompokkan baris DATA LOOKER mentah -> 1 baris TERBAIK per operator
 // (No.Absen), dipilih dari seluruh histori 3 bulan terakhir, lintas semua
@@ -3250,11 +3256,11 @@ function renderEvaluasiBagian2And3(){
       <td data-label="Proses" title="${r.proses||''}">${r.proses || '-'}</td>
       <td data-label="Rata-rata">${r.rata!=='' && !isNaN(Number(r.rata)) ? Math.round(Number(r.rata)) : '-'}</td>
       <td data-label="Capacity 100%">${r.capacity100 || '-'}</td>
-      <td data-label="Sisa Penetapan">${r.sisaBulan===null ? '-' : r.sisaBulan}</td>
+      <td data-label="Sisa Penetapan">${r.sisaBulan===null ? '-' : `<span class="eff-pill ${statusEffClass(r.statusPenetapan)}">${r.sisaBulan}</span>`}</td>
       <td data-label="Status Penetapan">${statusBadgeHtml(r.statusPenetapan)}</td>
-      <td data-label="Level Skill">${r.levelSkill===null ? '-' : r.levelSkill}</td>
+      <td data-label="Level Skill">${r.levelSkill===null ? '-' : `<span class="eff-pill ${statusEffClass(r.statusSkill)}">${r.levelSkill}</span>`}</td>
       <td data-label="Status Skill">${statusBadgeHtml(r.statusSkill)}</td>
-      <td data-label="EFF Terbaik">${r.eff===null ? '-' : `<span class="eff-pill ${effClass(r.eff)}">${r.eff.toFixed(2)}%</span>`}</td>
+      <td data-label="EFF Terbaik">${r.eff===null ? '-' : `<span class="eff-pill ${statusEffClass(r.statusEff)}">${r.eff.toFixed(2)}%</span>`}</td>
       <td data-label="Status Efisiensi">${statusBadgeHtml(r.statusEff)}</td>
     </tr>
   `).join('') : `<tr><td colspan="13" style="text-align:center;color:var(--text-dim);padding:16px;">Tidak ada operator yang cocok dengan filter ini.</td></tr>`;
