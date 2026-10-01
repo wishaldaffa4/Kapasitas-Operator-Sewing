@@ -455,28 +455,43 @@
         <div style="display:grid;grid-template-columns:repeat(3,1fr);">
           <div style="padding-right:20px;">
             <div style="font-weight:700;margin-bottom:10px;color:var(--text);">Sisa Penetapan</div>
-            <div style="margin-bottom:14px;">
+            <div style="margin-bottom:10px;">
               <label style="display:block;margin-bottom:5px;"><input type="checkbox" class="eval-filter eval-filter-penetapan" value="URGENT" checked> 🔴 Urgent</label>
               <label style="display:block;margin-bottom:5px;"><input type="checkbox" class="eval-filter eval-filter-penetapan" value="PRIORITAS" checked> 🟡 Prioritas</label>
               <label style="display:block;"><input type="checkbox" class="eval-filter eval-filter-penetapan" value="AMAN" checked> 🟢 Aman</label>
+            </div>
+            <div class="hint" style="font-size:11px;line-height:1.6;margin-bottom:14px;">
+              🔴 Sisa ≤18 bulan (bukan TETAP)<br>
+              🟡 Sisa 19-23 bulan (bukan TETAP)<br>
+              🟢 TETAP, atau sisa ≥24 bulan
             </div>
             <div id="evalChartPenetapan"></div>
           </div>
           <div style="padding:0 20px;border-left:1px solid var(--border);">
             <div style="font-weight:700;margin-bottom:10px;color:var(--text);">Level Skill</div>
-            <div style="margin-bottom:14px;">
+            <div style="margin-bottom:10px;">
               <label style="display:block;margin-bottom:5px;"><input type="checkbox" class="eval-filter eval-filter-skill" value="URGENT" checked> 🔴 Urgent</label>
               <label style="display:block;margin-bottom:5px;"><input type="checkbox" class="eval-filter eval-filter-skill" value="PRIORITAS" checked> 🟡 Prioritas</label>
               <label style="display:block;"><input type="checkbox" class="eval-filter eval-filter-skill" value="AMAN" checked> 🟢 Aman</label>
+            </div>
+            <div class="hint" style="font-size:11px;line-height:1.6;margin-bottom:14px;">
+              🔴 Level Skill = 1<br>
+              🟡 Level Skill = 2<br>
+              🟢 Level Skill ≥ 3
             </div>
             <div id="evalChartSkill"></div>
           </div>
           <div style="padding-left:20px;border-left:1px solid var(--border);">
             <div style="font-weight:700;margin-bottom:10px;color:var(--text);">Efisiensi</div>
-            <div style="margin-bottom:14px;">
+            <div style="margin-bottom:10px;">
               <label style="display:block;margin-bottom:5px;"><input type="checkbox" class="eval-filter eval-filter-eff" value="URGENT" checked> 🔴 Urgent</label>
               <label style="display:block;margin-bottom:5px;"><input type="checkbox" class="eval-filter eval-filter-eff" value="PRIORITAS" checked> 🟡 Prioritas</label>
               <label style="display:block;"><input type="checkbox" class="eval-filter eval-filter-eff" value="AMAN" checked> 🟢 Aman</label>
+            </div>
+            <div class="hint" style="font-size:11px;line-height:1.6;margin-bottom:14px;">
+              🔴 EFF &lt; 85%<br>
+              🟡 85% ≤ EFF &lt; 100%<br>
+              🟢 EFF ≥ 100%
             </div>
             <div id="evalChartEff"></div>
           </div>
@@ -3120,11 +3135,21 @@ function statusEffClass(status){
   return '';
 }
 
-// Kelompokkan baris DATA LOOKER mentah -> 1 baris TERBAIK per operator
-// (No.Absen), dipilih dari seluruh histori 3 bulan terakhir, lintas semua
-// Proses: prioritas Level Skill TERTINGGI dulu, kalau sama baru EFF
-// TERTINGGI yang jadi penentu.
-function computeBestPerOperator(rows){
+// Cek apakah sebuah Style termasuk order ADIRA, berdasarkan kolom JENIS
+// ORDER di Data SMV (sudah otomatis terbawa penuh di dataSmv tanpa perlu
+// ubah Code.gs). Dicocokkan berdasarkan STYLE saja (bukan Style+Proses).
+const adiraStyleCache = new Map();
+function isAdiraStyle(style){
+  const key = String(style||'').trim().toUpperCase();
+  if(!key) return false;
+  if(adiraStyleCache.has(key)) return adiraStyleCache.get(key);
+  const match = dataSmv.find(s => String(s['STYLE']||'').trim().toUpperCase() === key);
+  const result = match ? String(match['JENIS ORDER']||'').trim().toUpperCase() === 'ADIRA' : false;
+  adiraStyleCache.set(key, result);
+  return result;
+}
+
+function pickBestPerOperator_(rows){
   const map = new Map();
   rows.forEach(r=>{
     const eff = Number(r['EFF']);
@@ -3145,6 +3170,24 @@ function computeBestPerOperator(rows){
     }
   });
   return map;
+}
+
+// Kelompokkan baris DATA LOOKER mentah -> 1 baris TERBAIK per operator
+// (No.Absen), dipilih dari seluruh histori 3 bulan terakhir, lintas semua
+// Proses: prioritas Level Skill TERTINGGI dulu, kalau sama baru EFF
+// TERTINGGI yang jadi penentu. UTAMAKAN order ADIRA -- kalau operator itu
+// tidak punya histori ADIRA sama sekali, baru pakai order NON-ADIRA sebagai
+// cadangan (bukan dikeluarkan dari tabel).
+function computeBestPerOperator(rows){
+  const adiraRows = rows.filter(r => isAdiraStyle(r['STYLE']));
+  const nonAdiraRows = rows.filter(r => !isAdiraStyle(r['STYLE']));
+
+  const bestNonAdira = pickBestPerOperator_(nonAdiraRows);
+  const bestAdira = pickBestPerOperator_(adiraRows);
+
+  const combined = new Map(bestNonAdira); // dasar: NON-ADIRA
+  bestAdira.forEach((val, key)=> combined.set(key, val)); // ADIRA menimpa kalau operator itu punya histori ADIRA
+  return combined;
 }
 
 async function initEvaluasiTab(){
