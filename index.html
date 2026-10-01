@@ -95,6 +95,9 @@
   .main-content{width:100%;min-width:0;}
 
   @media (max-width: 768px){
+    #tab-evaluasi [style*="grid-template-columns:repeat(3,1fr)"]{display:block !important;}
+    #tab-evaluasi [style*="grid-template-columns:repeat(3,1fr)"] > div{padding:0 !important;border-left:none !important;border-top:1px solid var(--border);padding-top:16px !important;margin-top:16px;}
+    #tab-evaluasi [style*="grid-template-columns:repeat(3,1fr)"] > div:first-child{border-top:none;margin-top:0;padding-top:0 !important;}
     .layout{flex-direction:column;}
     .sidebar{width:100%;display:flex;gap:4px;overflow-x:auto;padding:6px;}
     .sidebar button{white-space:nowrap;width:auto;margin-bottom:0;}
@@ -443,6 +446,45 @@
     </div>
 
     <div class="panel">
+      <div class="panel-title">Ringkasan &amp; Filter</div>
+      <div class="panel-body">
+        <div class="row" style="margin-bottom:18px;">
+          <div class="field" style="min-width:220px;" id="evalProsesMS"></div>
+          <div class="field"><label>&nbsp;</label><button id="evalProsesApplyBtn" class="secondary">Terapkan Filter Proses</button></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);">
+          <div style="padding-right:20px;">
+            <div style="font-weight:700;margin-bottom:10px;color:var(--text);">Sisa Penetapan</div>
+            <div style="margin-bottom:14px;">
+              <label style="display:block;margin-bottom:5px;"><input type="checkbox" class="eval-filter eval-filter-penetapan" value="URGENT" checked> 🔴 Urgent</label>
+              <label style="display:block;margin-bottom:5px;"><input type="checkbox" class="eval-filter eval-filter-penetapan" value="PRIORITAS" checked> 🟡 Prioritas</label>
+              <label style="display:block;"><input type="checkbox" class="eval-filter eval-filter-penetapan" value="AMAN" checked> 🟢 Aman</label>
+            </div>
+            <div id="evalChartPenetapan"></div>
+          </div>
+          <div style="padding:0 20px;border-left:1px solid var(--border);">
+            <div style="font-weight:700;margin-bottom:10px;color:var(--text);">Level Skill</div>
+            <div style="margin-bottom:14px;">
+              <label style="display:block;margin-bottom:5px;"><input type="checkbox" class="eval-filter eval-filter-skill" value="URGENT" checked> 🔴 Urgent</label>
+              <label style="display:block;margin-bottom:5px;"><input type="checkbox" class="eval-filter eval-filter-skill" value="PRIORITAS" checked> 🟡 Prioritas</label>
+              <label style="display:block;"><input type="checkbox" class="eval-filter eval-filter-skill" value="AMAN" checked> 🟢 Aman</label>
+            </div>
+            <div id="evalChartSkill"></div>
+          </div>
+          <div style="padding-left:20px;border-left:1px solid var(--border);">
+            <div style="font-weight:700;margin-bottom:10px;color:var(--text);">Efisiensi</div>
+            <div style="margin-bottom:14px;">
+              <label style="display:block;margin-bottom:5px;"><input type="checkbox" class="eval-filter eval-filter-eff" value="URGENT" checked> 🔴 Urgent</label>
+              <label style="display:block;margin-bottom:5px;"><input type="checkbox" class="eval-filter eval-filter-eff" value="PRIORITAS" checked> 🟡 Prioritas</label>
+              <label style="display:block;"><input type="checkbox" class="eval-filter eval-filter-eff" value="AMAN" checked> 🟢 Aman</label>
+            </div>
+            <div id="evalChartEff"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
       <div class="panel-title">Evaluasi Operator — 1 Baris per Operator (Level Skill &amp; Efisiensi Tertinggi, 3 Bulan Terakhir)</div>
       <div class="panel-body">
         <div class="table-wrap">
@@ -456,50 +498,6 @@
             </tr></thead>
             <tbody id="evalBagian2Body"></tbody>
           </table>
-        </div>
-      </div>
-    </div>
-
-    <div class="panel">
-      <div class="panel-title">Ringkasan &amp; Filter</div>
-      <div class="panel-body">
-        <div class="row" style="margin-bottom:14px;">
-          <div class="field" style="min-width:220px;" id="evalProsesMS"></div>
-          <div class="field"><label>&nbsp;</label><button id="evalProsesApplyBtn" class="secondary">Terapkan Filter Proses</button></div>
-        </div>
-        <div class="row" style="margin-bottom:18px;flex-wrap:wrap;gap:24px;">
-          <div>
-            <div class="hint" style="font-weight:600;margin-bottom:4px;color:var(--text);">Filter Status Penetapan</div>
-            <label style="margin-right:10px;"><input type="checkbox" class="eval-filter eval-filter-penetapan" value="URGENT" checked> 🔴 Urgent</label>
-            <label style="margin-right:10px;"><input type="checkbox" class="eval-filter eval-filter-penetapan" value="PRIORITAS" checked> 🟡 Prioritas</label>
-            <label><input type="checkbox" class="eval-filter eval-filter-penetapan" value="AMAN" checked> 🟢 Aman</label>
-          </div>
-          <div>
-            <div class="hint" style="font-weight:600;margin-bottom:4px;color:var(--text);">Filter Status Skill</div>
-            <label style="margin-right:10px;"><input type="checkbox" class="eval-filter eval-filter-skill" value="URGENT" checked> 🔴 Urgent</label>
-            <label style="margin-right:10px;"><input type="checkbox" class="eval-filter eval-filter-skill" value="PRIORITAS" checked> 🟡 Prioritas</label>
-            <label><input type="checkbox" class="eval-filter eval-filter-skill" value="AMAN" checked> 🟢 Aman</label>
-          </div>
-          <div>
-            <div class="hint" style="font-weight:600;margin-bottom:4px;color:var(--text);">Filter Status Efisiensi</div>
-            <label style="margin-right:10px;"><input type="checkbox" class="eval-filter eval-filter-eff" value="URGENT" checked> 🔴 Urgent</label>
-            <label style="margin-right:10px;"><input type="checkbox" class="eval-filter eval-filter-eff" value="PRIORITAS" checked> 🟡 Prioritas</label>
-            <label><input type="checkbox" class="eval-filter eval-filter-eff" value="AMAN" checked> 🟢 Aman</label>
-          </div>
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:24px;">
-          <div>
-            <div style="font-weight:600;margin-bottom:8px;">Sisa Penetapan</div>
-            <div id="evalChartPenetapan"></div>
-          </div>
-          <div>
-            <div style="font-weight:600;margin-bottom:8px;">Level Skill</div>
-            <div id="evalChartSkill"></div>
-          </div>
-          <div>
-            <div style="font-weight:600;margin-bottom:8px;">Efisiensi</div>
-            <div id="evalChartEff"></div>
-          </div>
         </div>
       </div>
     </div>
