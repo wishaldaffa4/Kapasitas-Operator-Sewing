@@ -140,6 +140,7 @@
     <button data-tab="histori"><span class="side-icon">🕓</span> Histori Kapasitas</button>
     <button data-tab="wip"><span class="side-icon">📉</span> Dashboard WIP</button>
     <button data-tab="skill"><span class="side-icon">🧩</span> Skill Operator</button>
+    <button data-tab="evaluasi"><span class="side-icon">📋</span> Evaluasi &amp; Follow Up</button>
     <hr>
     <button data-tab="settings"><span class="side-icon">⚙️</span> Pengaturan</button>
   </aside>
@@ -421,6 +422,86 @@
             </tr></thead>
             <tbody id="skillBody"></tbody>
           </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: EVALUASI & FOLLOW UP OPERATOR -->
+  <div id="tab-evaluasi" class="tab-content" style="display:none;">
+    <div class="panel">
+      <div class="panel-body">
+        <div class="row" style="margin-bottom:6px;">
+          <button id="evalRefreshBtn">🔄 Muat ulang (3 bulan terakhir)</button>
+          <span class="hint" id="evalMsg" style="align-self:center;"></span>
+        </div>
+        <div class="hint">Data historis 3 bulan terakhir dari DATA LOOKER. Dimuat otomatis sekali saat tab ini pertama dibuka; klik "Muat ulang" untuk ambil data terbaru.</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Top 3 Histori per Kategori Proses Kritis (3 bulan terakhir)</div>
+      <div class="panel-body" id="evalBagian1Area"><div class="hint">Memuat...</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Evaluasi Operator — Sisa Penetapan, Skill &amp; Efisiensi</div>
+      <div class="panel-body">
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr>
+              <th>No. Absen</th><th>Nama</th><th>Line</th><th>Style</th><th>Proses</th>
+              <th>Rata-rata</th><th>Capacity 100%</th>
+              <th>Sisa Penetapan</th><th>Status Penetapan</th>
+              <th>Level Skill</th><th>Status Skill</th>
+              <th>EFF Terbaik</th><th>Status Efisiensi</th>
+            </tr></thead>
+            <tbody id="evalBagian2Body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Ringkasan &amp; Filter</div>
+      <div class="panel-body">
+        <div class="row" style="margin-bottom:14px;">
+          <div class="field" style="min-width:220px;" id="evalProsesMS"></div>
+          <div class="field"><label>&nbsp;</label><button id="evalProsesApplyBtn" class="secondary">Terapkan Filter Proses</button></div>
+        </div>
+        <div class="row" style="margin-bottom:18px;flex-wrap:wrap;gap:24px;">
+          <div>
+            <div class="hint" style="font-weight:600;margin-bottom:4px;color:var(--text);">Filter Status Penetapan</div>
+            <label style="margin-right:10px;"><input type="checkbox" class="eval-filter eval-filter-penetapan" value="URGENT" checked> 🔴 Urgent</label>
+            <label style="margin-right:10px;"><input type="checkbox" class="eval-filter eval-filter-penetapan" value="PRIORITAS" checked> 🟡 Prioritas</label>
+            <label><input type="checkbox" class="eval-filter eval-filter-penetapan" value="AMAN" checked> 🟢 Aman</label>
+          </div>
+          <div>
+            <div class="hint" style="font-weight:600;margin-bottom:4px;color:var(--text);">Filter Status Skill</div>
+            <label style="margin-right:10px;"><input type="checkbox" class="eval-filter eval-filter-skill" value="URGENT" checked> 🔴 Urgent</label>
+            <label style="margin-right:10px;"><input type="checkbox" class="eval-filter eval-filter-skill" value="PRIORITAS" checked> 🟡 Prioritas</label>
+            <label><input type="checkbox" class="eval-filter eval-filter-skill" value="AMAN" checked> 🟢 Aman</label>
+          </div>
+          <div>
+            <div class="hint" style="font-weight:600;margin-bottom:4px;color:var(--text);">Filter Status Efisiensi</div>
+            <label style="margin-right:10px;"><input type="checkbox" class="eval-filter eval-filter-eff" value="URGENT" checked> 🔴 Urgent</label>
+            <label style="margin-right:10px;"><input type="checkbox" class="eval-filter eval-filter-eff" value="PRIORITAS" checked> 🟡 Prioritas</label>
+            <label><input type="checkbox" class="eval-filter eval-filter-eff" value="AMAN" checked> 🟢 Aman</label>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:24px;">
+          <div>
+            <div style="font-weight:600;margin-bottom:8px;">Sisa Penetapan</div>
+            <div id="evalChartPenetapan"></div>
+          </div>
+          <div>
+            <div style="font-weight:600;margin-bottom:8px;">Level Skill</div>
+            <div id="evalChartSkill"></div>
+          </div>
+          <div>
+            <div style="font-weight:600;margin-bottom:8px;">Efisiensi</div>
+            <div id="evalChartEff"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -2941,7 +3022,16 @@ function renderSkillTab(){
     return SKILL_FIELDS.some(f=> selectedSkills.includes((o[f]||'').trim()));
   });
 
-  rows = rows.slice().sort((a,b)=> (a['NAMA']||'').localeCompare(b['NAMA']||'', 'id'));
+  rows = rows.slice().sort((a,b)=>{
+    const lineA = activeLineByNip[a['NIP']] || '';
+    const lineB = activeLineByNip[b['NIP']] || '';
+    const availA = !lineA || AVAILABLE_LINES_EXCEPTION.includes(lineA);
+    const availB = !lineB || AVAILABLE_LINES_EXCEPTION.includes(lineB);
+    if(availA !== availB) return availA ? -1 : 1; // Tersedia dulu, baru Tidak Tersedia
+    const lineCompare = lineA.localeCompare(lineB, 'id');
+    if(lineCompare !== 0) return lineCompare; // alfabetis berdasarkan nama Line
+    return (a['NAMA']||'').localeCompare(b['NAMA']||'', 'id'); // terakhir, alfabetis Nama
+  });
 
   if(rows.length===0){
     tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text-dim);padding:16px;">Tidak ada operator yang cocok dengan filter ini.</td></tr>`;
@@ -2973,6 +3063,276 @@ function renderSkillTab(){
 }
 document.getElementById('skillShowBtn').addEventListener('click', renderSkillTab);
 
+/* ---------- Tab: Evaluasi & Follow Up Operator ---------- */
+let evalRawRows = null; // cache mentah dari DATA LOOKER, 3 bulan terakhir
+let evalBestByOperator = []; // 1 baris terbaik (EFF tertinggi) per operator
+let evalProsesMS = null;
+let evalProsesMSInited = false;
+
+const KATEGORI_KRITIS_LABELS = ['Ibu Jari','Elastic','Machi','Lipat','Pita'];
+
+// PENTING: dibungkus lewat syncChain yang sama dengan syncNow(), supaya
+// tarikan data berat (3 bulan DATA LOOKER) TIDAK jalan bersamaan dengan
+// proses Simpan & Cetak di tab lain (Input Kapasitas/Assignment) -- biar
+// tidak saling memperberat koneksi, terutama di WiFi yang lemah.
+function queuedFetch(fn){
+  const next = syncChain.then(fn, fn);
+  syncChain = next.catch(()=>{});
+  return next;
+}
+
+function computeEval3MonthRange(){
+  const end = new Date(todayStr());
+  const start = new Date(end);
+  start.setMonth(start.getMonth()-3);
+  return { start: start.toISOString().slice(0,10), end: end.toISOString().slice(0,10) };
+}
+
+function statusSisaPenetapan(bulan){
+  if(bulan===null || bulan===undefined || isNaN(bulan)) return null;
+  if(bulan<=18) return 'URGENT';
+  if(bulan<=23) return 'PRIORITAS';
+  return 'AMAN';
+}
+function statusLevelSkill(lvl){
+  if(lvl===null || lvl===undefined || isNaN(lvl)) return null;
+  if(lvl===1) return 'URGENT';
+  if(lvl===2) return 'PRIORITAS';
+  if(lvl>=3) return 'AMAN';
+  return null;
+}
+function statusEfisiensi(eff){
+  if(eff===null || eff===undefined || isNaN(eff)) return null;
+  if(eff<85) return 'URGENT';
+  if(eff<100) return 'PRIORITAS';
+  return 'AMAN';
+}
+function statusBadgeHtml(status){
+  if(status===null) return '-';
+  const cls = status==='URGENT' ? 'eff-bad' : (status==='PRIORITAS' ? 'eff-warn' : 'eff-good');
+  const label = status==='URGENT' ? '🔴 Urgent' : (status==='PRIORITAS' ? '🟡 Prioritas' : '🟢 Aman');
+  return `<span class="eff-pill ${cls}">${label}</span>`;
+}
+
+// Kelompokkan baris DATA LOOKER mentah -> 1 baris EFF tertinggi per
+// kombinasi (No.Absen + Style + Proses). Dipakai untuk Bagian 1 (top 3 per
+// kategori kritis) dan sebagai dasar Bagian 2 (ambil 1 terbaik per operator).
+function computeBestByOperatorStyleProses(rows){
+  const map = new Map();
+  rows.forEach(r=>{
+    const eff = Number(r['EFF']);
+    if(isNaN(eff)) return;
+    const noAbsen = r['NO. ABSEN'];
+    if(!noAbsen) return;
+    const key = `${noAbsen}||${r['STYLE']}||${r['PROSES']}`;
+    const cur = map.get(key);
+    if(!cur || eff > cur.eff){
+      map.set(key, {
+        noAbsen, nama: r['NAMA']||'', line: r['LINE']||'', style: r['STYLE']||'', proses: r['PROSES']||'',
+        rata: r['RATA-RATA'], eff, levelSkill: r['LEVEL SKILL'], tanggal: r['TANGGAL']
+      });
+    }
+  });
+  return [...map.values()];
+}
+
+async function initEvaluasiTab(){
+  if(evalRawRows === null){
+    await loadEvaluasiData();
+  }else{
+    renderEvaluasiAll();
+  }
+  if(!evalProsesMSInited){
+    const prosesSet = new Set((evalRawRows||[]).map(r=>r['PROSES']).filter(Boolean));
+    evalProsesMS = createMultiSelect('evalProsesMS', 'Proses', [...prosesSet].sort());
+    evalProsesMSInited = true;
+  }
+}
+
+async function loadEvaluasiData(){
+  const msg = document.getElementById('evalMsg');
+  msg.textContent = 'Memuat data 3 bulan terakhir dari DATA LOOKER...';
+  const { start, end } = computeEval3MonthRange();
+  try{
+    const rows = await queuedFetch(()=> gasGet('getHistoricalByDateRange&start='+encodeURIComponent(start)+'&end='+encodeURIComponent(end)));
+    evalRawRows = dedupeHistoricalRows(rows);
+    msg.textContent = `${evalRawRows.length} baris histori dimuat (${fmtDate(start)} - ${fmtDate(end)}).`;
+  }catch(e){
+    msg.textContent = 'Gagal memuat: ' + e.message;
+    evalRawRows = [];
+  }
+  evalBestByOperator = [];
+  renderEvaluasiAll();
+}
+
+function renderEvaluasiAll(){
+  const bestByOpStyleProses = computeBestByOperatorStyleProses(evalRawRows || []);
+
+  // ---------- Bagian 1: Top 3 per kategori kritis ----------
+  const area1 = document.getElementById('evalBagian1Area');
+  const html1 = KATEGORI_KRITIS_LABELS.map((label, idx)=>{
+    const entriesForCategory = bestByOpStyleProses.filter(e=> prosesPriority_(e.proses)===idx);
+    // per operator, ambil sampai 3 kombinasi Style+Proses terbaik (EFF tertinggi)
+    const byOperator = new Map();
+    entriesForCategory.forEach(e=>{
+      if(!byOperator.has(e.noAbsen)) byOperator.set(e.noAbsen, []);
+      byOperator.get(e.noAbsen).push(e);
+    });
+    let top3PerOperator = [];
+    byOperator.forEach(list=>{
+      list.sort((a,b)=> b.eff - a.eff);
+      top3PerOperator = top3PerOperator.concat(list.slice(0,3));
+    });
+    top3PerOperator.sort((a,b)=> b.eff - a.eff);
+
+    const rowsHtml = top3PerOperator.map(e=>`
+      <tr>
+        <td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;">${e.noAbsen}</td>
+        <td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;">${e.nama}</td>
+        <td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;">${e.line}</td>
+        <td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;">${e.style}</td>
+        <td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;">${e.proses}</td>
+        <td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;text-align:center;">${e.rata}</td>
+        <td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;text-align:center;"><span class="eff-pill ${effClass(e.eff)}">${e.eff.toFixed(1)}%</span></td>
+      </tr>
+    `).join('');
+
+    return `
+      <div style="margin-bottom:20px;">
+        <div class="line-toggle-header" style="font-weight:600;color:var(--accent);margin-bottom:6px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;">
+          <span class="line-toggle-icon">▶</span> ${label} (${top3PerOperator.length} baris)
+        </div>
+        <div style="display:none;overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead><tr style="background:var(--panel2);">
+              <th style="padding:5px 6px;text-align:left;">No. Absen</th><th style="padding:5px 6px;text-align:left;">Nama</th>
+              <th style="padding:5px 6px;text-align:left;">Line</th><th style="padding:5px 6px;text-align:left;">Style</th>
+              <th style="padding:5px 6px;text-align:left;">Proses</th><th style="padding:5px 6px;text-align:center;">Rata-rata</th>
+              <th style="padding:5px 6px;text-align:center;">EFF</th>
+            </tr></thead>
+            <tbody>${rowsHtml || '<tr><td colspan="7" style="text-align:center;color:var(--text-dim);padding:10px;">Tidak ada data.</td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }).join('');
+  area1.innerHTML = html1;
+  wireLineToggles(area1);
+
+  // ---------- Bagian 2: 1 terbaik per operator ----------
+  const bestByNip = new Map();
+  bestByOpStyleProses.forEach(e=>{
+    const cur = bestByNip.get(e.noAbsen);
+    if(!cur || e.eff > cur.eff) bestByNip.set(e.noAbsen, e);
+  });
+
+  evalBestByOperator = dataOpt.map(op=>{
+    const perf = bestByNip.get(op['NIP']);
+    const sisaBulan = Number(op['SISA WAKTU PENETAPAN (BULAN)']);
+    const levelSkillVal = perf ? Number(perf.levelSkill) : null;
+    const effVal = perf ? perf.eff : null;
+    return {
+      noAbsen: op['NIP'], nama: op['NAMA']||'', line: perf ? perf.line : '',
+      style: perf ? perf.style : '', proses: perf ? perf.proses : '',
+      rata: perf ? perf.rata : '', capacity100: perf ? lookupSmv(perf.style, perf.proses) : 0,
+      sisaBulan: isNaN(sisaBulan) ? null : sisaBulan,
+      levelSkill: (levelSkillVal===null || isNaN(levelSkillVal)) ? null : levelSkillVal,
+      eff: effVal,
+      statusPenetapan: statusSisaPenetapan(isNaN(sisaBulan) ? null : sisaBulan),
+      statusSkill: statusLevelSkill(levelSkillVal),
+      statusEff: statusEfisiensi(effVal)
+    };
+  }).filter(r=> r.eff !== null); // cuma operator yang punya histori performa
+
+  renderEvaluasiBagian2And3();
+}
+
+const EVAL_STATUS_ORDER = { URGENT:0, PRIORITAS:1, AMAN:2 };
+
+function getEvalActiveFilters(){
+  const selectedProses = evalProsesMS ? evalProsesMS.getSelected() : [];
+  const getChecked = (cls)=> [...document.querySelectorAll('.'+cls+':checked')].map(cb=>cb.value);
+  return {
+    proses: selectedProses,
+    penetapan: getChecked('eval-filter-penetapan'),
+    skill: getChecked('eval-filter-skill'),
+    eff: getChecked('eval-filter-eff')
+  };
+}
+
+function renderEvaluasiBagian2And3(){
+  const filters = getEvalActiveFilters();
+  let rows = evalBestByOperator.filter(r=>{
+    if(filters.proses.length && !filters.proses.includes(r.proses)) return false;
+    if(!filters.penetapan.includes(r.statusPenetapan)) return false;
+    if(!filters.skill.includes(r.statusSkill)) return false;
+    if(!filters.eff.includes(r.statusEff)) return false;
+    return true;
+  });
+
+  rows.sort((a,b)=>{
+    if(a.eff !== b.eff) return a.eff - b.eff;
+    const la = a.levelSkill===null ? Infinity : a.levelSkill;
+    const lb = b.levelSkill===null ? Infinity : b.levelSkill;
+    if(la !== lb) return la - lb;
+    const oa = EVAL_STATUS_ORDER[a.statusPenetapan] ?? 3;
+    const ob = EVAL_STATUS_ORDER[b.statusPenetapan] ?? 3;
+    return oa - ob;
+  });
+
+  const tbody = document.getElementById('evalBagian2Body');
+  tbody.innerHTML = rows.length ? rows.map(r=>`
+    <tr>
+      <td data-label="No. Absen">${r.noAbsen}</td>
+      <td data-label="Nama">${r.nama}</td>
+      <td data-label="Line">${r.line || '-'}</td>
+      <td data-label="Style">${r.style || '-'}</td>
+      <td data-label="Proses">${r.proses || '-'}</td>
+      <td data-label="Rata-rata">${r.rata!=='' && !isNaN(Number(r.rata)) ? Math.round(Number(r.rata)) : '-'}</td>
+      <td data-label="Capacity 100%">${r.capacity100 || '-'}</td>
+      <td data-label="Sisa Penetapan">${r.sisaBulan===null ? '-' : r.sisaBulan}</td>
+      <td data-label="Status Penetapan">${statusBadgeHtml(r.statusPenetapan)}</td>
+      <td data-label="Level Skill">${r.levelSkill===null ? '-' : r.levelSkill}</td>
+      <td data-label="Status Skill">${statusBadgeHtml(r.statusSkill)}</td>
+      <td data-label="EFF Terbaik">${r.eff===null ? '-' : `<span class="eff-pill ${effClass(r.eff)}">${r.eff.toFixed(2)}%</span>`}</td>
+      <td data-label="Status Efisiensi">${statusBadgeHtml(r.statusEff)}</td>
+    </tr>
+  `).join('') : `<tr><td colspan="13" style="text-align:center;color:var(--text-dim);padding:16px;">Tidak ada operator yang cocok dengan filter ini.</td></tr>`;
+
+  renderEvalStatusChart('evalChartPenetapan', rows, 'statusPenetapan');
+  renderEvalStatusChart('evalChartSkill', rows, 'statusSkill');
+  renderEvalStatusChart('evalChartEff', rows, 'statusEff');
+}
+
+function renderEvalStatusChart(containerId, rows, field){
+  const counts = { URGENT:0, PRIORITAS:0, AMAN:0 };
+  rows.forEach(r=>{ if(r[field] && counts[r[field]]!==undefined) counts[r[field]]++; });
+  const total = counts.URGENT + counts.PRIORITAS + counts.AMAN;
+  const defs = [
+    { key:'URGENT', label:'🔴 Urgent', color:'var(--bad)' },
+    { key:'PRIORITAS', label:'🟡 Prioritas', color:'var(--warn)' },
+    { key:'AMAN', label:'🟢 Aman', color:'var(--good)' }
+  ];
+  document.getElementById(containerId).innerHTML = defs.map(d=>{
+    const n = counts[d.key];
+    const pct = total ? (n/total*100).toFixed(1) : '0.0';
+    return `
+      <div style="margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+          <span>${d.label}</span><span>${n} (${pct}%)</span>
+        </div>
+        <div style="background:var(--panel2);border-radius:4px;height:10px;overflow:hidden;">
+          <div style="width:${pct}%;height:100%;background:${d.color};"></div>
+        </div>
+      </div>
+    `;
+  }).join('') + `<div class="hint">Total: ${total} operator</div>`;
+}
+
+document.getElementById('evalRefreshBtn').addEventListener('click', loadEvaluasiData);
+document.querySelectorAll('.eval-filter').forEach(cb=> cb.addEventListener('change', renderEvaluasiBagian2And3));
+document.getElementById('evalProsesApplyBtn').addEventListener('click', renderEvaluasiBagian2And3);
+
 function switchTab(tabName){
   document.querySelectorAll('#sidebarNav button').forEach(b=>b.classList.toggle('active', b.dataset.tab===tabName));
   document.querySelectorAll('.tab-content').forEach(t=>t.style.display='none');
@@ -2983,6 +3343,7 @@ function switchTab(tabName){
   if(tabName==='histori') initHistTab();
   if(tabName==='wip') initWipTab();
   if(tabName==='skill') initSkillTab();
+  if(tabName==='evaluasi') initEvaluasiTab();
   saveUiState();
 }
 document.querySelectorAll('#sidebarNav button').forEach(btn=>{
