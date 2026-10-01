@@ -3213,7 +3213,15 @@ function renderEvaluasiBagian2And3(){
     return true;
   });
 
+  const PENETAPAN_ORDER = { URGENT:0, PRIORITAS:1, AMAN:2 };
   rows.sort((a,b)=>{
+    // Urutkan berdasarkan KATEGORI Status Penetapan dulu (Urgent -> Prioritas
+    // -> Aman), BUKAN angka sisa bulan mentah -- supaya operator yang masih
+    // berstatus KONTRAK dan Urgent selalu di atas, tidak kalah oleh operator
+    // non-kontrak yang sisa bulannya kebetulan lebih kecil tapi cuma Prioritas.
+    const pa = PENETAPAN_ORDER[a.statusPenetapan] ?? 3;
+    const pb = PENETAPAN_ORDER[b.statusPenetapan] ?? 3;
+    if(pa !== pb) return pa - pb;
     const sa = a.sisaBulan===null ? Infinity : a.sisaBulan;
     const sb = b.sisaBulan===null ? Infinity : b.sisaBulan;
     if(sa !== sb) return sa - sb;
