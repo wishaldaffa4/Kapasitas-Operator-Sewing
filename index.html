@@ -3460,6 +3460,8 @@ function renderEvalWeekChart(containerId, series, dates){
     s.values.forEach((v,i)=>{
       if(v===null) return;
       svg += `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="3" fill="${s.color}"/>`;
+      const label = Number.isInteger(v) ? v : v.toFixed(1);
+      svg += `<text x="${x(i).toFixed(1)}" y="${(y(v)-8).toFixed(1)}" font-size="9" fill="${s.color}" text-anchor="middle">${label}</text>`;
     });
     // Label nama langsung di ujung garis, biar jelas pembeda antar operator
     if(lastPoint){
