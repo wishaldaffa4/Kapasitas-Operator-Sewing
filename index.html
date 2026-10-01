@@ -58,6 +58,8 @@
   #sumPerformTable td:nth-child(5), #sumPerformTable th:nth-child(5){width:60px;max-width:60px;text-align:center;}
   #histTable td:nth-child(5), #histTable th:nth-child(5),
   #histTable td:nth-child(6), #histTable th:nth-child(6){width:180px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  #evalTable td:nth-child(4), #evalTable th:nth-child(4),
+  #evalTable td:nth-child(5), #evalTable th:nth-child(5){width:140px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .eff-pill{display:inline-block;padding:2px 8px;border-radius:20px;font-weight:600;font-size:11.5px;}
   .eff-good{background:rgba(62,207,142,.15);color:var(--good);}
   .eff-warn{background:rgba(224,167,46,.15);color:var(--warn);}
@@ -115,6 +117,7 @@
     table.data-table td.col-nama{width:auto;max-width:none;white-space:normal;overflow:visible;text-overflow:clip;}
     #sumPerformTable td:nth-child(4), #sumPerformTable td:nth-child(5){width:auto;max-width:none;text-align:left;}
     #histTable td:nth-child(5), #histTable td:nth-child(6){width:auto;max-width:none;white-space:normal;overflow:visible;text-overflow:clip;}
+    #evalTable td:nth-child(4), #evalTable td:nth-child(5){width:auto;max-width:none;white-space:normal;overflow:visible;text-overflow:clip;}
     .row .field button{width:100%;white-space:normal;word-break:break-word;text-align:center;line-height:1.3;}
     .hint{white-space:normal;word-break:break-word;}
   }
@@ -440,15 +443,10 @@
     </div>
 
     <div class="panel">
-      <div class="panel-title">Top 3 Histori per Kategori Proses Kritis (3 bulan terakhir)</div>
-      <div class="panel-body" id="evalBagian1Area"><div class="hint">Memuat...</div></div>
-    </div>
-
-    <div class="panel">
-      <div class="panel-title">Evaluasi Operator — Sisa Penetapan, Skill &amp; Efisiensi</div>
+      <div class="panel-title">Evaluasi Operator — 1 Baris per Operator (Level Skill &amp; Efisiensi Tertinggi, 3 Bulan Terakhir)</div>
       <div class="panel-body">
         <div class="table-wrap">
-          <table class="data-table">
+          <table class="data-table" id="evalTable">
             <thead><tr>
               <th>No. Absen</th><th>Nama</th><th>Line</th><th>Style</th><th>Proses</th>
               <th>Rata-rata</th><th>Capacity 100%</th>
@@ -3069,7 +3067,6 @@ let evalBestByOperator = []; // 1 baris terbaik (EFF tertinggi) per operator
 let evalProsesMS = null;
 let evalProsesMSInited = false;
 
-const KATEGORI_KRITIS_LABELS = ['Ibu Jari','Elastic','Machi','Lipat','Pita'];
 
 // PENTING: dibungkus lewat syncChain yang sama dengan syncNow(), supaya
 // tarikan data berat (3 bulan DATA LOOKER) TIDAK jalan bersamaan dengan
@@ -3088,9 +3085,10 @@ function computeEval3MonthRange(){
   return { start: start.toISOString().slice(0,10), end: end.toISOString().slice(0,10) };
 }
 
-function statusSisaPenetapan(bulan){
+function statusSisaPenetapan(bulan, statusKontrak){
   if(bulan===null || bulan===undefined || isNaN(bulan)) return null;
-  if(bulan<=18) return 'URGENT';
+  const isKontrak = String(statusKontrak||'').trim().toUpperCase() === 'KONTRAK';
+  if(bulan<=18) return isKontrak ? 'URGENT' : 'PRIORITAS';
   if(bulan<=23) return 'PRIORITAS';
   return 'AMAN';
 }
@@ -3114,26 +3112,31 @@ function statusBadgeHtml(status){
   return `<span class="eff-pill ${cls}">${label}</span>`;
 }
 
-// Kelompokkan baris DATA LOOKER mentah -> 1 baris EFF tertinggi per
-// kombinasi (No.Absen + Style + Proses). Dipakai untuk Bagian 1 (top 3 per
-// kategori kritis) dan sebagai dasar Bagian 2 (ambil 1 terbaik per operator).
-function computeBestByOperatorStyleProses(rows){
+// Kelompokkan baris DATA LOOKER mentah -> 1 baris TERBAIK per operator
+// (No.Absen), dipilih dari seluruh histori 3 bulan terakhir, lintas semua
+// Proses: prioritas Level Skill TERTINGGI dulu, kalau sama baru EFF
+// TERTINGGI yang jadi penentu.
+function computeBestPerOperator(rows){
   const map = new Map();
   rows.forEach(r=>{
     const eff = Number(r['EFF']);
     if(isNaN(eff)) return;
     const noAbsen = r['NO. ABSEN'];
     if(!noAbsen) return;
-    const key = `${noAbsen}||${r['STYLE']}||${r['PROSES']}`;
-    const cur = map.get(key);
-    if(!cur || eff > cur.eff){
-      map.set(key, {
+    const levelSkillRaw = Number(r['LEVEL SKILL']);
+    const levelSkill = isNaN(levelSkillRaw) ? null : levelSkillRaw;
+    const cur = map.get(noAbsen);
+    const curLevel = cur && cur.levelSkill!==null ? cur.levelSkill : -Infinity;
+    const thisLevel = levelSkill!==null ? levelSkill : -Infinity;
+    const better = !cur || thisLevel > curLevel || (thisLevel === curLevel && eff > cur.eff);
+    if(better){
+      map.set(noAbsen, {
         noAbsen, nama: r['NAMA']||'', line: r['LINE']||'', style: r['STYLE']||'', proses: r['PROSES']||'',
-        rata: r['RATA-RATA'], eff, levelSkill: r['LEVEL SKILL'], tanggal: r['TANGGAL']
+        rata: r['RATA-RATA'], eff, levelSkill, tanggal: r['TANGGAL']
       });
     }
   });
-  return [...map.values()];
+  return map;
 }
 
 async function initEvaluasiTab(){
@@ -3166,88 +3169,28 @@ async function loadEvaluasiData(){
 }
 
 function renderEvaluasiAll(){
-  const bestByOpStyleProses = computeBestByOperatorStyleProses(evalRawRows || []);
-
-  // ---------- Bagian 1: Top 3 per kategori kritis ----------
-  const area1 = document.getElementById('evalBagian1Area');
-  const html1 = KATEGORI_KRITIS_LABELS.map((label, idx)=>{
-    const entriesForCategory = bestByOpStyleProses.filter(e=> prosesPriority_(e.proses)===idx);
-    // per operator, ambil sampai 3 kombinasi Style+Proses terbaik (EFF tertinggi)
-    const byOperator = new Map();
-    entriesForCategory.forEach(e=>{
-      if(!byOperator.has(e.noAbsen)) byOperator.set(e.noAbsen, []);
-      byOperator.get(e.noAbsen).push(e);
-    });
-    let top3PerOperator = [];
-    byOperator.forEach(list=>{
-      list.sort((a,b)=> b.eff - a.eff);
-      top3PerOperator = top3PerOperator.concat(list.slice(0,3));
-    });
-    top3PerOperator.sort((a,b)=> b.eff - a.eff);
-
-    const rowsHtml = top3PerOperator.map(e=>`
-      <tr>
-        <td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;">${e.noAbsen}</td>
-        <td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;">${e.nama}</td>
-        <td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;">${e.line}</td>
-        <td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;">${e.style}</td>
-        <td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;">${e.proses}</td>
-        <td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;text-align:center;">${e.rata}</td>
-        <td style="padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;text-align:center;"><span class="eff-pill ${effClass(e.eff)}">${e.eff.toFixed(1)}%</span></td>
-      </tr>
-    `).join('');
-
-    return `
-      <div style="margin-bottom:20px;">
-        <div class="line-toggle-header" style="font-weight:600;color:var(--accent);margin-bottom:6px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;">
-          <span class="line-toggle-icon">▶</span> ${label} (${top3PerOperator.length} baris)
-        </div>
-        <div style="display:none;overflow-x:auto;">
-          <table style="width:100%;border-collapse:collapse;font-size:12px;">
-            <thead><tr style="background:var(--panel2);">
-              <th style="padding:5px 6px;text-align:left;">No. Absen</th><th style="padding:5px 6px;text-align:left;">Nama</th>
-              <th style="padding:5px 6px;text-align:left;">Line</th><th style="padding:5px 6px;text-align:left;">Style</th>
-              <th style="padding:5px 6px;text-align:left;">Proses</th><th style="padding:5px 6px;text-align:center;">Rata-rata</th>
-              <th style="padding:5px 6px;text-align:center;">EFF</th>
-            </tr></thead>
-            <tbody>${rowsHtml || '<tr><td colspan="7" style="text-align:center;color:var(--text-dim);padding:10px;">Tidak ada data.</td></tr>'}</tbody>
-          </table>
-        </div>
-      </div>
-    `;
-  }).join('');
-  area1.innerHTML = html1;
-  wireLineToggles(area1);
-
-  // ---------- Bagian 2: 1 terbaik per operator ----------
-  const bestByNip = new Map();
-  bestByOpStyleProses.forEach(e=>{
-    const cur = bestByNip.get(e.noAbsen);
-    if(!cur || e.eff > cur.eff) bestByNip.set(e.noAbsen, e);
-  });
+  const bestByNip = computeBestPerOperator(evalRawRows || []);
 
   evalBestByOperator = dataOpt.map(op=>{
     const perf = bestByNip.get(op['NIP']);
     const sisaBulan = Number(op['SISA WAKTU PENETAPAN (BULAN)']);
-    const levelSkillVal = perf ? Number(perf.levelSkill) : null;
+    const levelSkillVal = perf ? perf.levelSkill : null;
     const effVal = perf ? perf.eff : null;
     return {
       noAbsen: op['NIP'], nama: op['NAMA']||'', line: perf ? perf.line : '',
       style: perf ? perf.style : '', proses: perf ? perf.proses : '',
       rata: perf ? perf.rata : '', capacity100: perf ? lookupSmv(perf.style, perf.proses) : 0,
       sisaBulan: isNaN(sisaBulan) ? null : sisaBulan,
-      levelSkill: (levelSkillVal===null || isNaN(levelSkillVal)) ? null : levelSkillVal,
+      levelSkill: levelSkillVal,
       eff: effVal,
-      statusPenetapan: statusSisaPenetapan(isNaN(sisaBulan) ? null : sisaBulan),
+      statusPenetapan: statusSisaPenetapan(isNaN(sisaBulan) ? null : sisaBulan, op['STATUS KONTRAK']),
       statusSkill: statusLevelSkill(levelSkillVal),
       statusEff: statusEfisiensi(effVal)
     };
-  }).filter(r=> r.eff !== null); // cuma operator yang punya histori performa
+  }).filter(r=> r.eff !== null); // cuma operator yang punya histori performa 3 bulan terakhir
 
   renderEvaluasiBagian2And3();
 }
-
-const EVAL_STATUS_ORDER = { URGENT:0, PRIORITAS:1, AMAN:2 };
 
 function getEvalActiveFilters(){
   const selectedProses = evalProsesMS ? evalProsesMS.getSelected() : [];
@@ -3271,13 +3214,15 @@ function renderEvaluasiBagian2And3(){
   });
 
   rows.sort((a,b)=>{
-    if(a.eff !== b.eff) return a.eff - b.eff;
+    const sa = a.sisaBulan===null ? Infinity : a.sisaBulan;
+    const sb = b.sisaBulan===null ? Infinity : b.sisaBulan;
+    if(sa !== sb) return sa - sb;
     const la = a.levelSkill===null ? Infinity : a.levelSkill;
     const lb = b.levelSkill===null ? Infinity : b.levelSkill;
     if(la !== lb) return la - lb;
-    const oa = EVAL_STATUS_ORDER[a.statusPenetapan] ?? 3;
-    const ob = EVAL_STATUS_ORDER[b.statusPenetapan] ?? 3;
-    return oa - ob;
+    const ea = a.eff===null ? Infinity : a.eff;
+    const eb = b.eff===null ? Infinity : b.eff;
+    return ea - eb;
   });
 
   const tbody = document.getElementById('evalBagian2Body');
@@ -3286,8 +3231,8 @@ function renderEvaluasiBagian2And3(){
       <td data-label="No. Absen">${r.noAbsen}</td>
       <td data-label="Nama">${r.nama}</td>
       <td data-label="Line">${r.line || '-'}</td>
-      <td data-label="Style">${r.style || '-'}</td>
-      <td data-label="Proses">${r.proses || '-'}</td>
+      <td data-label="Style" title="${r.style||''}">${r.style || '-'}</td>
+      <td data-label="Proses" title="${r.proses||''}">${r.proses || '-'}</td>
       <td data-label="Rata-rata">${r.rata!=='' && !isNaN(Number(r.rata)) ? Math.round(Number(r.rata)) : '-'}</td>
       <td data-label="Capacity 100%">${r.capacity100 || '-'}</td>
       <td data-label="Sisa Penetapan">${r.sisaBulan===null ? '-' : r.sisaBulan}</td>
