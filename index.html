@@ -2098,6 +2098,22 @@ function dedupeHistoricalRows(rows){
   });
 }
 
+// PENTING: dipakai khusus untuk data yang mencakup BANYAK tanggal sekaligus
+// (misal rentang 3 bulan di tab Evaluasi). Beda dari dedupeHistoricalRows di
+// atas (yang sengaja TIDAK menyertakan TANGGAL, karena awalnya dirancang
+// untuk data 1 hari spesifik saja) -- di sini TANGGAL wajib ikut jadi kunci,
+// supaya baris di hari yang beda tidak salah dianggap "duplikat" hanya
+// karena kebetulan Style+Proses+Rata-rata+EFF-nya sama persis.
+function dedupeHistoricalRowsMultiDate(rows){
+  const seen = new Set();
+  return rows.filter(r=>{
+    const key = `${r['TANGGAL']}||${r['NO. ABSEN']}||${r['STYLE']}||${r['PROSES']}||${r['RATA-RATA']}||${r['EFF']}`;
+    if(seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 async function loadHistoricalByDate(dateStr){
   if(historicalByDateCache.date === dateStr && historicalByDateCache.rows){
     return historicalByDateCache.rows;
@@ -3221,7 +3237,7 @@ async function loadEvaluasiData(){
   const { start, end } = computeEval3MonthRange();
   try{
     const rows = await queuedFetch(()=> gasGet('getHistoricalByDateRange&start='+encodeURIComponent(start)+'&end='+encodeURIComponent(end)));
-    evalRawRows = dedupeHistoricalRows(rows);
+    evalRawRows = dedupeHistoricalRowsMultiDate(rows);
     msg.textContent = `${evalRawRows.length} baris histori dimuat (${fmtDate(start)} - ${fmtDate(end)}).`;
   }catch(e){
     msg.textContent = 'Gagal memuat: ' + e.message;
