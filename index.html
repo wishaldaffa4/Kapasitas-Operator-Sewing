@@ -508,6 +508,7 @@
     <div class="panel">
       <div class="panel-title">Evaluasi Operator — 1 Baris per Operator (Level Skill &amp; Efisiensi Tertinggi, 3 Bulan Terakhir)</div>
       <div class="panel-body">
+        <div class="hint" id="evalAttendanceMsg" style="margin-bottom:10px;"></div>
         <div class="table-wrap">
           <table class="data-table" id="evalTable">
             <thead><tr>
@@ -3234,11 +3235,15 @@ function computeBestPerOperator(rows){
 let evalAttendanceByNip = null; // Map NIP -> { quarters: [...] }, dicache sekali
 
 async function loadAttendanceSummary(){
+  const msg = document.getElementById('evalAttendanceMsg');
+  if(msg) msg.textContent = 'Memuat data absensi...';
   try{
     const rows = await queuedFetch(()=> gasGet('getAttendanceSummary'));
     evalAttendanceByNip = new Map(rows.map(r=> [r['NIP'], r]));
+    if(msg) msg.textContent = `Data absensi dimuat untuk ${rows.length} operator.`;
   }catch(e){
     evalAttendanceByNip = new Map(); // gagal -> anggap kosong, jangan sampai bikin tab error total
+    if(msg) msg.textContent = 'Gagal memuat data absensi: ' + e.message;
   }
 }
 
