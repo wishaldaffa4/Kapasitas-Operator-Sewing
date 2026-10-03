@@ -60,6 +60,11 @@
   #histTable td:nth-child(6), #histTable th:nth-child(6){width:180px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   #evalTable td:nth-child(4), #evalTable th:nth-child(4),
   #evalTable td:nth-child(5), #evalTable th:nth-child(5){width:140px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  /* Freeze kolom No.Absen, Nama, Line supaya tetap kelihatan saat scroll ke samping */
+  #evalTable td:nth-child(1), #evalTable th:nth-child(1){position:sticky;left:0;z-index:2;background:var(--panel);width:90px;min-width:90px;}
+  #evalTable td:nth-child(2), #evalTable th:nth-child(2){position:sticky;left:90px;z-index:2;background:var(--panel);width:150px;min-width:150px;}
+  #evalTable td:nth-child(3), #evalTable th:nth-child(3){position:sticky;left:240px;z-index:2;background:var(--panel);width:60px;min-width:60px;box-shadow:2px 0 4px -2px rgba(0,0,0,.4);}
+  #evalTable thead th:nth-child(1), #evalTable thead th:nth-child(2), #evalTable thead th:nth-child(3){background:var(--panel2);z-index:3;}
   .eff-pill{display:inline-block;padding:2px 8px;border-radius:20px;font-weight:600;font-size:11.5px;}
   .eff-good{background:rgba(62,207,142,.15);color:var(--good);}
   .eff-warn{background:rgba(224,167,46,.15);color:var(--warn);}
@@ -121,6 +126,7 @@
     #sumPerformTable td:nth-child(4), #sumPerformTable td:nth-child(5){width:auto;max-width:none;text-align:left;}
     #histTable td:nth-child(5), #histTable td:nth-child(6){width:auto;max-width:none;white-space:normal;overflow:visible;text-overflow:clip;}
     #evalTable td:nth-child(4), #evalTable td:nth-child(5){width:auto;max-width:none;white-space:normal;overflow:visible;text-overflow:clip;}
+    #evalTable td:nth-child(1), #evalTable td:nth-child(2), #evalTable td:nth-child(3){position:static;width:auto;min-width:0;box-shadow:none;}
     .row .field button{width:100%;white-space:normal;word-break:break-word;text-align:center;line-height:1.3;}
     .hint{white-space:normal;word-break:break-word;}
   }
@@ -510,6 +516,7 @@
               <th>Sisa Penetapan</th><th>Status Penetapan</th>
               <th>Level Skill</th><th>Status Skill</th>
               <th>EFF Terbaik</th><th>Status Efisiensi</th>
+              <th>% Absensi (klik untuk detail)</th><th>Status Absensi</th>
             </tr></thead>
             <tbody id="evalBagian2Body"></tbody>
           </table>
@@ -3150,6 +3157,12 @@ function statusEfisiensi(eff){
   if(eff<100) return 'PRIORITAS';
   return 'AMAN';
 }
+function statusAbsensi(pctTm){
+  if(pctTm===null || pctTm===undefined || isNaN(pctTm)) return null;
+  if(pctTm>=5) return 'URGENT';
+  if(pctTm>=3) return 'PRIORITAS';
+  return 'AMAN';
+}
 function statusBadgeHtml(status){
   if(status===null) return '-';
   const cls = status==='URGENT' ? 'eff-bad' : (status==='PRIORITAS' ? 'eff-warn' : 'eff-good');
@@ -3218,11 +3231,26 @@ function computeBestPerOperator(rows){
   return combined;
 }
 
+let evalAttendanceByNip = null; // Map NIP -> { quarters: [...] }, dicache sekali
+
+async function loadAttendanceSummary(){
+  try{
+    const rows = await queuedFetch(()=> gasGet('getAttendanceSummary'));
+    evalAttendanceByNip = new Map(rows.map(r=> [r['NIP'], r]));
+  }catch(e){
+    evalAttendanceByNip = new Map(); // gagal -> anggap kosong, jangan sampai bikin tab error total
+  }
+}
+
 async function initEvaluasiTab(){
   if(evalRawRows === null){
     await loadEvaluasiData();
   }else{
     renderEvaluasiAll();
+  }
+  if(evalAttendanceByNip === null){
+    await loadAttendanceSummary();
+    renderEvaluasiBagian2And3();
   }
   if(!evalProsesMSInited){
     const prosesSet = new Set((evalRawRows||[]).map(r=>r['PROSES']).filter(Boolean));
@@ -3255,6 +3283,9 @@ function renderEvaluasiAll(){
     const sisaBulan = Number(op['SISA WAKTU PENETAPAN (BULAN)']);
     const levelSkillVal = perf ? perf.levelSkill : null;
     const effVal = perf ? perf.eff : null;
+    const attendance = evalAttendanceByNip ? evalAttendanceByNip.get(op['NIP']) : null;
+    const latestQuarter = attendance && attendance.quarters && attendance.quarters[0] ? attendance.quarters[0] : null;
+    const pctTm = latestQuarter ? latestQuarter.pctTm : null;
     return {
       noAbsen: op['NIP'], nama: op['NAMA']||'', line: perf ? perf.line : '',
       style: perf ? perf.style : '', proses: perf ? perf.proses : '',
@@ -3262,9 +3293,12 @@ function renderEvaluasiAll(){
       sisaBulan: isNaN(sisaBulan) ? null : sisaBulan,
       levelSkill: levelSkillVal,
       eff: effVal,
+      pctTm, tmCount: latestQuarter ? latestQuarter.tmCount : null,
+      attendanceQuarters: attendance ? attendance.quarters : null,
       statusPenetapan: statusSisaPenetapan(isNaN(sisaBulan) ? null : sisaBulan, op['STATUS KONTRAK']),
       statusSkill: statusLevelSkill(levelSkillVal),
       statusEff: statusEfisiensi(effVal),
+      statusAbsensi: statusAbsensi(pctTm),
       isTetap: String(op['STATUS KONTRAK']||'').trim().toUpperCase() === 'TETAP'
     };
   }).filter(r=> r.eff !== null); // cuma operator yang punya histori performa 3 bulan terakhir
@@ -3333,8 +3367,14 @@ function renderEvaluasiBagian2And3(){
       <td data-label="Status Skill">${statusBadgeHtml(r.statusSkill)}</td>
       <td data-label="EFF Terbaik">${r.eff===null ? '-' : `<span class="eff-pill ${statusEffClass(r.statusEff)}">${r.eff.toFixed(2)}%</span>`}</td>
       <td data-label="Status Efisiensi">${statusBadgeHtml(r.statusEff)}</td>
+      <td data-label="% Absensi">${r.pctTm===null ? '-' : `<span class="eff-pill ${statusEffClass(r.statusAbsensi)} absensi-detail-trigger" style="cursor:pointer;" data-nip="${r.noAbsen}" title="Klik untuk lihat rincian 4 kuartal">${r.pctTm.toFixed(1)}% 🔍</span>`}</td>
+      <td data-label="Status Absensi">${statusBadgeHtml(r.statusAbsensi)}</td>
     </tr>
-  `).join('') : `<tr><td colspan="13" style="text-align:center;color:var(--text-dim);padding:16px;">Tidak ada operator yang cocok dengan filter ini.</td></tr>`;
+  `).join('') : `<tr><td colspan="15" style="text-align:center;color:var(--text-dim);padding:16px;">Tidak ada operator yang cocok dengan filter ini.</td></tr>`;
+
+  tbody.querySelectorAll('.absensi-detail-trigger').forEach(el=>{
+    el.addEventListener('click', ()=> openAttendanceDetailModal(el.getAttribute('data-nip')));
+  });
 
   renderEvalStatusChart('evalChartPenetapan', rows, 'statusPenetapan');
   renderEvalStatusChart('evalChartSkill', rows, 'statusSkill');
@@ -3433,6 +3473,47 @@ function renderEvaluasiWeekSection(filteredRows){
       </div>
     `;
   }).join('') || '<div class="hint">Tidak ada operator yang cocok dengan filter ini.</div>';
+}
+
+function openAttendanceDetailModal(nip){
+  const row = evalBestByOperator.find(r=>r.noAbsen===nip);
+  const quarters = row ? row.attendanceQuarters : null;
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  const rowsHtml = (quarters||[]).map(q=>{
+    const status = statusAbsensi(q.pctTm);
+    const pctText = q.pctTm===null ? '-' : `${q.pctTm.toFixed(1)}%`;
+    return `
+      <tr>
+        <td style="padding:6px 8px;border-bottom:1px solid var(--border);">${q.label}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid var(--border);text-align:center;">${q.tmCount}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid var(--border);text-align:center;">${q.hadirCount}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid var(--border);text-align:center;">${status ? `<span class="eff-pill ${statusEffClass(status)}">${pctText}</span>` : '-'}</td>
+      </tr>
+    `;
+  }).join('');
+
+  backdrop.innerHTML = `
+    <div class="modal" style="width:480px;">
+      <h3>Rincian Absensi — ${row ? row.nama : ''} (${nip})</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:10px;">
+        <thead><tr style="background:var(--panel2);">
+          <th style="padding:6px 8px;text-align:left;">Kuartal</th>
+          <th style="padding:6px 8px;text-align:center;">Hari TM</th>
+          <th style="padding:6px 8px;text-align:center;">Hari Hadir</th>
+          <th style="padding:6px 8px;text-align:center;">% Absensi</th>
+        </tr></thead>
+        <tbody>${rowsHtml || '<tr><td colspan="4" style="text-align:center;color:var(--text-dim);padding:12px;">Tidak ada data absensi untuk operator ini.</td></tr>'}</tbody>
+      </table>
+      <div class="modal-actions">
+        <button class="secondary" id="attDetailClose">Tutup</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+  backdrop.querySelector('#attDetailClose').addEventListener('click', ()=> backdrop.remove());
+  backdrop.addEventListener('click', (e)=>{ if(e.target===backdrop) backdrop.remove(); });
 }
 
 function renderEvalWeekChart(containerId, series, dates){
