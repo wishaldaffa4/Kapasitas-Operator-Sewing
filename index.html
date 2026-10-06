@@ -354,6 +354,7 @@
         <div class="row" style="margin-bottom:12px;">
           <div class="field"><label>Dari tanggal</label><input type="date" id="histFrom"></div>
           <div class="field"><label>Sampai tanggal</label><input type="date" id="histTo"></div>
+          <div class="field" style="min-width:180px;" id="histLineMS"></div>
           <div class="field" style="min-width:180px;" id="histNamaMS"></div>
           <div class="field" style="min-width:180px;" id="histStyleMS"></div>
           <div class="field" style="min-width:180px;" id="histProsesMS"></div>
@@ -2789,7 +2790,7 @@ function createMultiSelect(containerId, labelPrefix, options){
 document.addEventListener('click', ()=> document.querySelectorAll('.ms-panel').forEach(p=> p.style.display='none'));
 
 /* ---------- Tab: Histori Kapasitas Operator ---------- */
-let histNamaMS = null, histStyleMS = null, histProsesMS = null;
+let histNamaMS = null, histStyleMS = null, histProsesMS = null, histLineMS = null;
 let histTabInited = false;
 
 function initHistTab(){
@@ -2806,6 +2807,7 @@ function initHistTab(){
     const namaOptions = [...new Set(dataOpt.map(o=>o['NAMA']).filter(Boolean))].sort();
     const styleOptions = [...new Set(dataSmv.map(r=>r['STYLE']).filter(Boolean))].sort();
     const prosesOptions = [...new Set(dataSmv.map(r=>r['PROSES']).filter(Boolean))].sort();
+    histLineMS = createMultiSelect('histLineMS', 'Line', LINES.slice());
     histNamaMS = createMultiSelect('histNamaMS', 'Nama', namaOptions);
     histStyleMS = createMultiSelect('histStyleMS', 'Style', styleOptions);
     histProsesMS = createMultiSelect('histProsesMS', 'Proses', prosesOptions);
@@ -2816,6 +2818,7 @@ function initHistTab(){
 async function renderHistTabResults(){
   const from = document.getElementById('histFrom').value;
   const to = document.getElementById('histTo').value;
+  const lines = histLineMS ? histLineMS.getSelected() : [];
   const names = histNamaMS ? histNamaMS.getSelected() : [];
   const styles = histStyleMS ? histStyleMS.getSelected() : [];
   const prosesArr = histProsesMS ? histProsesMS.getSelected() : [];
@@ -2827,6 +2830,7 @@ async function renderHistTabResults(){
   let qs = [];
   if(from) qs.push('start=' + encodeURIComponent(from));
   if(to) qs.push('end=' + encodeURIComponent(to));
+  if(lines.length) qs.push('lines=' + encodeURIComponent(lines.join(',')));
   if(names.length) qs.push('names=' + encodeURIComponent(names.join(',')));
   if(styles.length) qs.push('styles=' + encodeURIComponent(styles.join(',')));
   if(prosesArr.length) qs.push('prosesList=' + encodeURIComponent(prosesArr.join(',')));
@@ -2837,6 +2841,13 @@ async function renderHistTabResults(){
   }catch(e){
     msg.textContent = 'Gagal memuat: ' + e.message;
     return;
+  }
+
+  // Pengaman: saring lagi di browser berdasarkan Line (berfungsi walau Code.gs
+  // belum di-deploy ulang dan server belum mengenal parameter 'lines').
+  if(lines.length){
+    const lineSet = new Set(lines.map(l=>String(l).trim().toUpperCase()));
+    rows = rows.filter(r=> lineSet.has(String(r['LINE']||'').trim().toUpperCase()));
   }
 
   if(rows.length===0){
