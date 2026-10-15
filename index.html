@@ -424,6 +424,7 @@
         <div class="row" style="margin-bottom:12px;">
           <div class="field"><label>Tanggal</label><input type="date" id="skillDate"></div>
           <div class="field" style="min-width:220px;" id="skillProsesMS"></div>
+          <div class="field" style="min-width:220px;" id="skillOperatorMS"></div>
           <div class="field"><label>&nbsp;</label><button id="skillShowBtn">Tampilkan</button></div>
           <span class="hint" id="skillMsg" style="align-self:center;"></span>
         </div>
@@ -3035,6 +3036,7 @@ document.getElementById('wipShowBtn').addEventListener('click', renderWipDashboa
 
 /* ---------- Tab: Skill Operator & Ketersediaan ---------- */
 let skillProsesMS = null;
+let skillOperatorMS = null;
 let skillTabInited = false;
 const SKILL_FIELDS = ['JOB SPESIFIC','SKILL 1','SKILL 2','SKILL 3'];
 const AVAILABLE_LINES_EXCEPTION = ['CAD','REPAIR'];
@@ -3053,6 +3055,8 @@ function initSkillTab(){
     });
     const skillOptions = [...skillSet].sort();
     skillProsesMS = createMultiSelect('skillProsesMS', 'Skill/Proses', skillOptions);
+    const operatorOptions = dataOpt.map(o=> `${o['NIP']} - ${o['NAMA']}`).sort();
+    skillOperatorMS = createMultiSelect('skillOperatorMS', 'Operator', operatorOptions);
     skillTabInited = true;
   }
   renderSkillTab();
@@ -3065,6 +3069,7 @@ function renderSkillTab(){
   if(!dateStr){ msg.textContent = 'Pilih tanggal dulu.'; return; }
 
   const selectedSkills = skillProsesMS ? skillProsesMS.getSelected() : [];
+  const selectedNips = new Set((skillOperatorMS ? skillOperatorMS.getSelected() : []).map(s=> s.split(' - ')[0].trim()));
 
   // Untuk tanggal terpilih, tentukan Line assignment aktif (lengkap Style+
   // Proses, atau Line CAD/REPAIR walau cuma Line-nya saja) per No.Absen.
@@ -3076,6 +3081,7 @@ function renderSkillTab(){
   });
 
   let rows = dataOpt.filter(o=>{
+    if(selectedNips.size && !selectedNips.has(String(o['NIP']).trim())) return false;
     if(selectedSkills.length===0) return true;
     return SKILL_FIELDS.some(f=> selectedSkills.includes((o[f]||'').trim()));
   });
