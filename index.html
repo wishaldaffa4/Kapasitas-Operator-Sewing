@@ -3301,7 +3301,7 @@ function renderEvaluasiAll(){
     const effVal = perf ? perf.eff : null;
     const attendance = evalAttendanceByNip ? evalAttendanceByNip.get(op['NIP']) : null;
     const latestQuarter = attendance && attendance.quarters && attendance.quarters[0] ? attendance.quarters[0] : null;
-    const pctTm = latestQuarter ? latestQuarter.pctTm : null;
+    const pctTm = latestQuarter ? latestQuarter.pctAbsen : null;
     return {
       noAbsen: op['NIP'], nama: op['NAMA']||'', line: perf ? perf.line : '',
       style: perf ? perf.style : '', proses: perf ? perf.proses : '',
@@ -3309,7 +3309,7 @@ function renderEvaluasiAll(){
       sisaBulan: isNaN(sisaBulan) ? null : sisaBulan,
       levelSkill: levelSkillVal,
       eff: effVal,
-      pctTm, tmCount: latestQuarter ? latestQuarter.tmCount : null,
+      pctTm, absenCount: latestQuarter ? latestQuarter.absenCount : null,
       attendanceQuarters: attendance ? attendance.quarters : null,
       statusPenetapan: statusSisaPenetapan(isNaN(sisaBulan) ? null : sisaBulan, op['STATUS KONTRAK']),
       statusSkill: statusLevelSkill(levelSkillVal),
@@ -3498,29 +3498,31 @@ function openAttendanceDetailModal(nip){
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
   const rowsHtml = (quarters||[]).map(q=>{
-    const status = statusAbsensi(q.pctTm);
-    const pctText = q.pctTm===null ? '-' : `${q.pctTm.toFixed(1)}%`;
+    const status = statusAbsensi(q.pctAbsen);
+    const pctText = q.pctAbsen===null ? '-' : `${q.pctAbsen.toFixed(1)}%`;
     return `
       <tr>
         <td style="padding:6px 8px;border-bottom:1px solid var(--border);">${q.label}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid var(--border);text-align:center;">${q.tmCount}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid var(--border);text-align:center;">${q.absenCount}</td>
         <td style="padding:6px 8px;border-bottom:1px solid var(--border);text-align:center;">${q.hadirCount}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid var(--border);text-align:center;">${q.hariKerja}</td>
         <td style="padding:6px 8px;border-bottom:1px solid var(--border);text-align:center;">${status ? `<span class="eff-pill ${statusEffClass(status)}">${pctText}</span>` : '-'}</td>
       </tr>
     `;
   }).join('');
 
   backdrop.innerHTML = `
-    <div class="modal" style="width:480px;">
+    <div class="modal" style="width:540px;">
       <h3>Rincian Absensi — ${row ? row.nama : ''} (${nip})</h3>
       <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:10px;">
         <thead><tr style="background:var(--panel2);">
           <th style="padding:6px 8px;text-align:left;">Kuartal</th>
-          <th style="padding:6px 8px;text-align:center;">Hari TM</th>
+          <th style="padding:6px 8px;text-align:center;">Hari Absen</th>
           <th style="padding:6px 8px;text-align:center;">Hari Hadir</th>
+          <th style="padding:6px 8px;text-align:center;">Hari Kerja</th>
           <th style="padding:6px 8px;text-align:center;">% Absensi</th>
         </tr></thead>
-        <tbody>${rowsHtml || '<tr><td colspan="4" style="text-align:center;color:var(--text-dim);padding:12px;">Tidak ada data absensi untuk operator ini.</td></tr>'}</tbody>
+        <tbody>${rowsHtml || '<tr><td colspan="5" style="text-align:center;color:var(--text-dim);padding:12px;">Tidak ada data absensi untuk operator ini.</td></tr>'}</tbody>
       </table>
       <div class="modal-actions">
         <button class="secondary" id="attDetailClose">Tutup</button>
