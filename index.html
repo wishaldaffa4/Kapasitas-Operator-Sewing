@@ -3518,9 +3518,10 @@ function openAttendanceDetailModal(nip){
   }).join('');
 
   backdrop.innerHTML = `
-    <div class="modal" style="width:540px;">
+    <div class="modal" style="width:540px;max-width:94vw;">
       <h3>Rincian Absensi — ${row ? row.nama : ''} (${nip})</h3>
-      <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:10px;">
+      <div style="overflow-x:auto;max-width:100%;">
+      <table style="width:100%;min-width:0;border-collapse:collapse;font-size:13px;margin-top:10px;">
         <thead><tr style="background:var(--panel2);">
           <th style="padding:6px 8px;text-align:left;">Kuartal</th>
           <th style="padding:6px 8px;text-align:center;">Hari Absen</th>
@@ -3530,6 +3531,7 @@ function openAttendanceDetailModal(nip){
         </tr></thead>
         <tbody>${rowsHtml || '<tr><td colspan="5" style="text-align:center;color:var(--text-dim);padding:12px;">Tidak ada data absensi untuk operator ini.</td></tr>'}</tbody>
       </table>
+      </div>
       <div class="modal-actions">
         <button class="secondary" id="attDetailClose">Tutup</button>
       </div>
