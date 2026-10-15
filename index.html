@@ -100,9 +100,9 @@
   .main-content{width:100%;min-width:0;}
 
   @media (max-width: 768px){
-    #tab-evaluasi [style*="grid-template-columns:repeat(3,1fr)"]{display:block !important;}
-    #tab-evaluasi [style*="grid-template-columns:repeat(3,1fr)"] > div{padding:0 !important;border-left:none !important;border-top:1px solid var(--border);padding-top:16px !important;margin-top:16px;}
-    #tab-evaluasi [style*="grid-template-columns:repeat(3,1fr)"] > div:first-child{border-top:none;margin-top:0;padding-top:0 !important;}
+    #tab-evaluasi [style*="grid-template-columns:repeat(4,1fr)"]{display:block !important;}
+    #tab-evaluasi [style*="grid-template-columns:repeat(4,1fr)"] > div{padding:0 !important;border-left:none !important;border-top:1px solid var(--border);padding-top:16px !important;margin-top:16px;}
+    #tab-evaluasi [style*="grid-template-columns:repeat(4,1fr)"] > div:first-child{border-top:none;margin-top:0;padding-top:0 !important;}
     .layout{flex-direction:column;}
     .sidebar{width:100%;display:flex;gap:4px;overflow-x:auto;padding:6px;}
     .sidebar button{white-space:nowrap;width:auto;margin-bottom:0;}
@@ -460,7 +460,7 @@
           <div class="field" style="min-width:220px;" id="evalProsesMS"></div>
           <div class="field"><label>&nbsp;</label><button id="evalProsesApplyBtn" class="secondary">Terapkan Filter Proses</button></div>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);">
           <div style="padding-right:20px;">
             <div style="font-weight:700;margin-bottom:10px;color:var(--text);">Sisa Penetapan</div>
             <div style="margin-bottom:10px;">
@@ -489,7 +489,7 @@
             </div>
             <div id="evalChartSkill"></div>
           </div>
-          <div style="padding-left:20px;border-left:1px solid var(--border);">
+          <div style="padding:0 20px;border-left:1px solid var(--border);">
             <div style="font-weight:700;margin-bottom:10px;color:var(--text);">Efisiensi</div>
             <div style="margin-bottom:10px;">
               <label style="display:block;margin-bottom:5px;"><input type="checkbox" class="eval-filter eval-filter-eff" value="URGENT" checked> 🔴 Urgent</label>
@@ -502,6 +502,20 @@
               🟢 EFF ≥ 100%
             </div>
             <div id="evalChartEff"></div>
+          </div>
+          <div style="padding-left:20px;border-left:1px solid var(--border);">
+            <div style="font-weight:700;margin-bottom:10px;color:var(--text);">Absensi</div>
+            <div style="margin-bottom:10px;">
+              <label style="display:block;margin-bottom:5px;"><input type="checkbox" class="eval-filter eval-filter-absensi" value="URGENT" checked> 🔴 Urgent</label>
+              <label style="display:block;margin-bottom:5px;"><input type="checkbox" class="eval-filter eval-filter-absensi" value="PRIORITAS" checked> 🟡 Prioritas</label>
+              <label style="display:block;"><input type="checkbox" class="eval-filter eval-filter-absensi" value="AMAN" checked> 🟢 Aman</label>
+            </div>
+            <div class="hint" style="font-size:11px;line-height:1.6;margin-bottom:14px;">
+              🔴 % Absensi ≥ 5%<br>
+              🟡 3% ≤ % Absensi &lt; 5%<br>
+              🟢 % Absensi &lt; 3%
+            </div>
+            <div id="evalChartAbsensi"></div>
           </div>
         </div>
       </div>
@@ -3335,7 +3349,8 @@ function getEvalActiveFilters(){
     proses: selectedProses,
     penetapan: getChecked('eval-filter-penetapan'),
     skill: getChecked('eval-filter-skill'),
-    eff: getChecked('eval-filter-eff')
+    eff: getChecked('eval-filter-eff'),
+    absensi: getChecked('eval-filter-absensi')
   };
 }
 
@@ -3346,6 +3361,9 @@ function renderEvaluasiBagian2And3(){
     if(!filters.penetapan.includes(r.statusPenetapan)) return false;
     if(!filters.skill.includes(r.statusSkill)) return false;
     if(!filters.eff.includes(r.statusEff)) return false;
+    // Operator tanpa data absensi (status null) tetap tampil selama ketiga
+    // centang Absensi masih lengkap (artinya filter ini belum menyaring apa pun).
+    if(filters.absensi.length < 3 && !filters.absensi.includes(r.statusAbsensi)) return false;
     return true;
   });
 
@@ -3401,6 +3419,7 @@ function renderEvaluasiBagian2And3(){
   renderEvalStatusChart('evalChartPenetapan', rows, 'statusPenetapan');
   renderEvalStatusChart('evalChartSkill', rows, 'statusSkill');
   renderEvalStatusChart('evalChartEff', rows, 'statusEff');
+  renderEvalStatusChart('evalChartAbsensi', rows, 'statusAbsensi');
 
   renderEvaluasiWeekSection(rows);
 }
@@ -3617,7 +3636,7 @@ function renderEvalStatusChart(containerId, rows, field){
         </div>
       </div>
     `;
-  }).join('') + `<div class="hint">Total: ${total} operator</div>`;
+  }).join('') + `<div class="hint">Total: ${total} operator${rows.length-total>0 ? ` · ${rows.length-total} tanpa data` : ''}</div>`;
 }
 
 document.getElementById('evalRefreshBtn').addEventListener('click', loadEvaluasiData);
