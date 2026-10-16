@@ -2871,12 +2871,12 @@ async function renderHistTabResults(){
     return;
   }
 
-  // Urutkan: TANGGAL dulu (terbaru di atas), lalu LINE (A-Z, angka diurutkan
+  // Urutkan: TANGGAL dulu (TERLAMA di atas), lalu LINE (A-Z, angka diurutkan
   // wajar: F02 sebelum F10), lalu Proses (A-Z), lalu EFF TERTINGGI di atas.
   // Baris tanpa nilai EFF ditaruh paling bawah di dalam Proses-nya. Kalau
   // masih sama, Nama A-Z.
   rows = rows.slice().sort((a,b)=>{
-    const dc = String(b['TANGGAL']||'').localeCompare(String(a['TANGGAL']||''));
+    const dc = String(a['TANGGAL']||'').localeCompare(String(b['TANGGAL']||''));
     if(dc !== 0) return dc;
     const lc = String(a['LINE']||'').trim().localeCompare(String(b['LINE']||'').trim(), 'id', { numeric: true, sensitivity: 'base' });
     if(lc !== 0) return lc;
@@ -2911,7 +2911,7 @@ async function renderHistTabResults(){
       </tr>
     `;
   }).join('');
-  msg.textContent = `${rows.length} baris ditemukan (urut: Tanggal terbaru, lalu Line, lalu Proses A-Z, lalu EFF tertinggi).`;
+  msg.textContent = `${rows.length} baris ditemukan (urut: Tanggal terlama, lalu Line, lalu Proses A-Z, lalu EFF tertinggi).`;
 }
 document.getElementById('histShowBtn').addEventListener('click', renderHistTabResults);
 
