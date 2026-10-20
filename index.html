@@ -3749,6 +3749,16 @@ document.getElementById('evalRefreshBtn').addEventListener('click', loadEvaluasi
 document.querySelectorAll('.eval-filter').forEach(cb=> cb.addEventListener('change', renderEvaluasiBagian2And3));
 document.getElementById('evalProsesApplyBtn').addEventListener('click', renderEvaluasiBagian2And3);
 
+/* ---------- Helper tag Output (dipakai Running Days & Histori Line) ---------- */
+function outputTagHtml(avg, outDays, sharedDays, scopeNote){
+  if(avg===null || avg===undefined) return '<span class="rd-tag" title="Tidak ada data output untuk hari-hari ini di sheet Output Line">Output -</span>';
+  const shared = sharedDays > 0
+    ? ` <span class="rd-tag" title="Di ${sharedDays} dari ${outDays} hari, line ini menjalankan lebih dari satu style. Output di sheet dicatat per line (bukan per style), jadi angka ini adalah output seluruh line dan sama untuk semua style yang jalan di hari itu.">output line gabungan</span>`
+    : '';
+  return `<span class="rd-tag" style="color:var(--text);font-weight:600;" title="Output rata-rata per hari ${scopeNote} (${outDays} hari punya data output)">Output ${Math.round(avg)}/hari</span>${shared}`;
+}
+/* ---------- /Helper tag Output ---------- */
+
 /* ---------- Tab: Running Days per Line ---------- */
 let rdData = null;
 let rdLoadedMonth = null;
@@ -3813,7 +3823,8 @@ function renderRunningDays(){
 
   const monthLabel = new Date(rdData.month + '-01T00:00:00').toLocaleDateString('id-ID', { month:'long', year:'numeric' });
   document.getElementById('rdSubtitle').textContent =
-    `Bulan ${monthLabel} · data terakhir di sheet: ${rdData.lastDateAll ? fmtDate(rdData.lastDateAll) : '-'} · running days dihitung dari awal rentetan berjalan (bisa mulai sebelum bulan ini).`;
+    `Bulan ${monthLabel} · data terakhir di sheet: ${rdData.lastDateAll ? fmtDate(rdData.lastDateAll) : '-'} · running days dihitung dari awal rentetan berjalan (bisa mulai sebelum bulan ini).`
+    + (rdData.outputAvailable === false ? ' ⚠ Data Output Line tidak terbaca: ' + rdData.outputError : '');
 
   // style belum terdaftar
   const unmapped = rdData.unmappedStyles || [];
@@ -3868,7 +3879,7 @@ function renderRunningDays(){
           <div class="rd-days">${s.totalDays}<small>hari berjalan</small></div>
           <div class="rd-sub">${s.daysInMonth} hari di bulan ini · total style ini di line ini bulan ini: <b>${totalByGroup[s.group]} hari</b></div>
           <div class="rd-range">${fmtDate(s.start)} → ${fmtDate(s.end)}${startedBefore ? ' <i>(mulai sebelum bulan ini)</i>' : ''}</div>
-          <div class="rd-meta">${effHtml}${jenisTag}${adiraTag}</div>
+          <div class="rd-meta">${effHtml}${outputTagHtml(s.avgOutput, s.outputDays, s.outputSharedDays, 'dari hari-hari segmen ini di bulan ini')}${jenisTag}${adiraTag}</div>
         </div>`;
     }).join('');
 
@@ -3963,7 +3974,8 @@ function renderLineHistory(){
   [...allGroups].sort((a,b)=> a.localeCompare(b,'id')).forEach((g,i)=>{ colorOf[g] = RD_PALETTE[i % RD_PALETTE.length]; });
 
   document.getElementById('lhSubtitle').textContent =
-    `Data di sheet: ${lhData.firstDateAll ? fmtDate(lhData.firstDateAll) : '-'} s/d ${lhData.lastDateAll ? fmtDate(lhData.lastDateAll) : '-'} · umur line dihitung dari tanggal data pertama line itu sampai hari ini.`;
+    `Data di sheet: ${lhData.firstDateAll ? fmtDate(lhData.firstDateAll) : '-'} s/d ${lhData.lastDateAll ? fmtDate(lhData.lastDateAll) : '-'} · umur line dihitung dari tanggal data pertama line itu sampai hari ini.`
+    + (lhData.outputAvailable === false ? ' ⚠ Data Output Line tidak terbaca: ' + lhData.outputError : '');
 
   const unmapped = lhData.unmappedStyles || [];
   const box = document.getElementById('lhUnmappedBox');
@@ -4010,12 +4022,20 @@ function renderLineHistory(){
       const maxSegEff = segEffs.length ? Math.max(...segEffs) : null;
       const effHtml = maxSegEff===null ? '<span class="rd-tag">EFF -</span>'
         : `<span class="eff-pill ${effClass(maxSegEff)}" title="EFF tertinggi dari rata-rata EFF antar segmen (lihat Detail segmen)">EFF maks ${maxSegEff.toFixed(1)}%</span>`;
+      // Output di kartu diambil dari SEGMEN YANG SAMA dengan EFF maks (kalau tidak ada
+      // segmen ber-EFF, pakai segmen terpanjang), supaya EFF dan output satu periode.
+      let refSeg = null;
+      s.segments.forEach(sg=>{ if(sg.avgEff!==null && (refSeg===null || sg.avgEff > refSeg.avgEff)) refSeg = sg; });
+      if(!refSeg) s.segments.forEach(sg=>{ if(refSeg===null || sg.days > refSeg.days) refSeg = sg; });
+      const outHtml = refSeg ? outputTagHtml(refSeg.avgOutput, refSeg.outputDays, refSeg.outputSharedDays, 'dari segmen yang sama dengan EFF maks') : '';
       const jenisTag = s.jenis ? `<span class="rd-tag">${rdEsc(s.jenis)}</span>` : '';
       const adiraTag = s.adira ? `<span class="rd-tag">${rdEsc(s.adira)}</span>` : '';
       const segRows = s.segments.map(sg=>{
         const sgEff = sg.avgEff===null ? 'EFF -' : `EFF ${sg.avgEff.toFixed(1)}%`;
+        const sgOut = (sg.avgOutput===null || sg.avgOutput===undefined) ? 'Output -'
+          : `Output ${Math.round(sg.avgOutput)}/hari` + (sg.outputSharedDays>0 ? ' (output line gabungan)' : '');
         const live = (sg.active && lineActive) ? ' <span class="rd-now live">● Berjalan</span>' : '';
-        return `<div class="lh-seg"><span>${fmtDate(sg.start)} → ${fmtDate(sg.end)}</span><span><b>${sg.days}</b> hari</span><span>${sgEff}</span>${live}</div>`;
+        return `<div class="lh-seg"><span>${fmtDate(sg.start)} → ${fmtDate(sg.end)}</span><span><b>${sg.days}</b> hari</span><span>${sgEff}</span><span>${sgOut}</span>${live}</div>`;
       }).join('');
       return `
         <div class="rd-card" style="border-top-color:${color};" ${variantNote ? `title="${rdEsc(variantNote)}"` : ''}>
@@ -4023,7 +4043,7 @@ function renderLineHistory(){
           <div class="rd-days">${s.totalDays}<small>hari total</small></div>
           <div class="rd-sub">Pernah jalan <b>${s.runs} kali</b> di line ini</div>
           <div class="rd-range">${fmtDate(s.firstDate)} → ${fmtDate(s.lastDate)}</div>
-          <div class="rd-meta">${effHtml}${jenisTag}${adiraTag}</div>
+          <div class="rd-meta">${effHtml}${outHtml}${jenisTag}${adiraTag}</div>
           <details class="lh-details"><summary>Detail ${s.segments.length} segmen</summary><div class="lh-segs">${segRows}</div></details>
         </div>`;
     }).join('');
