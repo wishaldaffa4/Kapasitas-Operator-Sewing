@@ -90,6 +90,15 @@
   .rd-now{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap;}
   .rd-now.live{background:rgba(62,207,142,.15);color:var(--good);}
   .rd-now.stale{background:var(--panel);border:1px solid var(--border);color:var(--text-dim);}
+  .lh-chip{font-size:12px;color:var(--text-dim);background:var(--panel);border:1px solid var(--border);border-radius:20px;padding:2px 10px;}
+  .lh-chip b{color:var(--text);}
+  .lh-status{font-size:11.5px;font-weight:700;padding:2px 10px;border-radius:20px;}
+  .lh-status.on{background:rgba(62,207,142,.15);color:var(--good);}
+  .lh-status.off{background:rgba(224,85,78,.15);color:var(--bad);}
+  .lh-details{margin-top:10px;border-top:1px dashed var(--border);padding-top:8px;}
+  .lh-details summary{cursor:pointer;font-size:12px;color:var(--accent);user-select:none;}
+  .lh-segs{margin-top:6px;display:flex;flex-direction:column;gap:4px;}
+  .lh-seg{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:11.5px;color:var(--text-dim);align-items:center;padding:4px 6px;background:var(--panel);border-radius:6px;}
 
   .eff-good{background:rgba(62,207,142,.15);color:var(--good);}
   .eff-warn{background:rgba(224,167,46,.15);color:var(--warn);}
@@ -179,6 +188,7 @@
     <button data-tab="skill"><span class="side-icon">🧩</span> Skill Operator</button>
     <button data-tab="evaluasi"><span class="side-icon">📋</span> Evaluasi &amp; Follow Up</button>
     <button data-tab="running"><span class="side-icon">🏃</span> Running Days</button>
+    <button data-tab="linehistory"><span class="side-icon">📜</span> Histori Line</button>
     <hr>
     <button data-tab="settings"><span class="side-icon">⚙️</span> Pengaturan</button>
   </aside>
@@ -601,6 +611,29 @@
     </div>
     <div id="rdSummary" class="rd-summary"></div>
     <div id="rdArea"><div class="hint">Memuat...</div></div>
+  </div>
+
+  <!-- TAB: HISTORI LINE -->
+  <div id="tab-linehistory" class="tab-content" style="display:none;">
+    <div class="panel">
+      <div class="panel-body">
+        <div class="row" style="margin-bottom:6px;">
+          <div class="field" style="min-width:200px;" id="lhLineMS"></div>
+          <div class="field" style="min-width:220px;" id="lhStyleMS"></div>
+          <div class="field"><label>&nbsp;</label><button id="lhApplyBtn" class="secondary">Terapkan Filter</button></div>
+          <div class="field"><label>&nbsp;</label><button id="lhRefreshBtn">🔄 Muat ulang</button></div>
+          <span class="hint" id="lhMsg" style="align-self:center;"></span>
+        </div>
+        <div class="hint" id="lhSubtitle"></div>
+        <details id="lhUnmappedBox" style="display:none;margin-top:10px;">
+          <summary id="lhUnmappedSummary" style="cursor:pointer;color:var(--warn);font-size:12.5px;"></summary>
+          <div class="hint" style="margin:6px 0;">Style di bawah ini ada di riwayat tapi belum tercatat di sheet Database Order Style, jadi dihitung sendiri-sendiri. Kalau ordernya sama dengan style lain, tambahkan barisnya di sheet itu dan isi kolom Grup Order, lalu klik Muat ulang.</div>
+          <div id="lhUnmappedList" style="font-size:12px;line-height:1.7;"></div>
+        </details>
+      </div>
+    </div>
+    <div id="lhSummary" class="rd-summary"></div>
+    <div id="lhArea"><div class="hint">Memuat...</div></div>
   </div>
 
   <!-- TAB: KAPASITAS -->
@@ -3861,6 +3894,153 @@ function renderRunningDays(){
 document.getElementById('rdApplyBtn').addEventListener('click', renderRunningDays);
 document.getElementById('rdRefreshBtn').addEventListener('click', ()=> loadRunningDays(todayStr().slice(0,7)));
 
+/* ---------- Tab: Histori Line ---------- */
+let lhData = null;
+let lhLineMS = null, lhStyleMS = null;
+let lhOptionsKey = '';
+
+function lhAgeText(startStr, endStr){
+  const s = new Date(startStr + 'T00:00:00'), e = new Date(endStr + 'T00:00:00');
+  let y = e.getFullYear() - s.getFullYear();
+  let m = e.getMonth() - s.getMonth();
+  let d = e.getDate() - s.getDate();
+  if(d < 0){ m--; d += new Date(e.getFullYear(), e.getMonth(), 0).getDate(); }
+  if(m < 0){ y--; m += 12; }
+  const parts = [];
+  if(y) parts.push(y + ' tahun');
+  if(m) parts.push(m + ' bulan');
+  if(!y && d) parts.push(d + ' hari');
+  return parts.length ? parts.join(' ') : '0 hari';
+}
+function lhDayDiff(a, b){
+  return Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000);
+}
+
+async function initLineHistoryTab(){
+  if(lhData === null) await loadLineHistory();
+  else renderLineHistory();
+}
+
+async function loadLineHistory(){
+  const msg = document.getElementById('lhMsg');
+  msg.textContent = 'Memuat seluruh riwayat Efisiensi Line...';
+  try{
+    // Diantre bareng Simpan/Cetak supaya tidak bertabrakan di koneksi yang lemah
+    lhData = await queuedFetch(()=> gasGet('getLineHistory'));
+    msg.textContent = '';
+  }catch(e){
+    msg.textContent = 'Gagal memuat: ' + e.message;
+    document.getElementById('lhArea').innerHTML = '<div class="hint">Gagal memuat data. Pastikan Code.gs sudah di-deploy ulang dan nama sheet "Efisiensi Line" serta "Database Order Style" sudah benar.</div>';
+    return;
+  }
+  setupLineHistoryFilters();
+  renderLineHistory();
+}
+
+function setupLineHistoryFilters(){
+  const lines = lhData.lines.map(l=>l.line);
+  const styleSet = new Set();
+  lhData.lines.forEach(l=> l.styles.forEach(s=> styleSet.add(s.group)));
+  const styles = [...styleSet].sort((a,b)=> a.localeCompare(b,'id'));
+  const key = lines.join('|') + '#' + styles.join('|');
+  if(key === lhOptionsKey) return;
+  if(lhLineMS) lhLineMS.destroy();
+  if(lhStyleMS) lhStyleMS.destroy();
+  lhLineMS = createMultiSelect('lhLineMS', 'Line', lines);
+  lhStyleMS = createMultiSelect('lhStyleMS', 'Style', styles);
+  lhOptionsKey = key;
+}
+
+function renderLineHistory(){
+  if(!lhData) return;
+  const selLines = lhLineMS ? lhLineMS.getSelected() : [];
+  const selStyles = lhStyleMS ? lhStyleMS.getSelected() : [];
+  const today = todayStr();
+
+  const allGroups = new Set();
+  lhData.lines.forEach(l=> l.styles.forEach(s=> allGroups.add(s.group)));
+  const colorOf = {};
+  [...allGroups].sort((a,b)=> a.localeCompare(b,'id')).forEach((g,i)=>{ colorOf[g] = RD_PALETTE[i % RD_PALETTE.length]; });
+
+  document.getElementById('lhSubtitle').textContent =
+    `Data di sheet: ${lhData.firstDateAll ? fmtDate(lhData.firstDateAll) : '-'} s/d ${lhData.lastDateAll ? fmtDate(lhData.lastDateAll) : '-'} · umur line dihitung dari tanggal data pertama line itu sampai hari ini.`;
+
+  const unmapped = lhData.unmappedStyles || [];
+  const box = document.getElementById('lhUnmappedBox');
+  if(unmapped.length){
+    box.style.display = '';
+    document.getElementById('lhUnmappedSummary').textContent = `⚠ ${unmapped.length} style belum terdaftar di Database Order Style (klik untuk lihat)`;
+    document.getElementById('lhUnmappedList').innerHTML = unmapped.map(s=> '• ' + rdEsc(s)).join('<br>');
+  }else{
+    box.style.display = 'none';
+  }
+
+  const blocks = [];
+  let lineCount = 0, activeLines = 0;
+
+  lhData.lines.forEach(l=>{
+    if(selLines.length && !selLines.includes(l.line)) return;
+    const styles = l.styles.filter(s=> !selStyles.length || selStyles.includes(s.group));
+    if(!styles.length) return;
+    lineCount++;
+
+    const lineActive = lhData.lastDateAll && l.lastDate === lhData.lastDateAll;
+    if(lineActive) activeLines++;
+    const minAge = lhData.firstDateAll && l.firstDate === lhData.firstDateAll;
+    const statusHtml = lineActive
+      ? '<span class="lh-status on">● Aktif</span>'
+      : `<span class="lh-status off" title="Data terakhir line ini ${fmtDate(l.lastDate)}, sedangkan data terakhir sheet ${fmtDate(lhData.lastDateAll)}">Tidak aktif sejak ${fmtDate(l.lastDate)} · ${lhDayDiff(l.lastDate, lhData.lastDateAll)} hari tanpa data</span>`;
+
+    const cards = styles.map(s=>{
+      const color = colorOf[s.group];
+      const variantNote = s.variants.length > 1 ? `Varian nama: ${s.variants.join(' / ')}` : '';
+      const nowTag = (s.active && lineActive) ? '<span class="rd-now live">● Berjalan</span>' : '';
+      const effHtml = s.avgEff===null ? '<span class="rd-tag">EFF -</span>'
+        : `<span class="eff-pill ${effClass(s.avgEff)}" title="Rata-rata EFF harian seluruh riwayat style ini di line ini">EFF ${s.avgEff.toFixed(1)}%</span>`;
+      const jenisTag = s.jenis ? `<span class="rd-tag">${rdEsc(s.jenis)}</span>` : '';
+      const adiraTag = s.adira ? `<span class="rd-tag">${rdEsc(s.adira)}</span>` : '';
+      const segRows = s.segments.map(sg=>{
+        const sgEff = sg.avgEff===null ? 'EFF -' : `EFF ${sg.avgEff.toFixed(1)}%`;
+        const live = (sg.active && lineActive) ? ' <span class="rd-now live">● Berjalan</span>' : '';
+        return `<div class="lh-seg"><span>${fmtDate(sg.start)} → ${fmtDate(sg.end)}</span><span><b>${sg.days}</b> hari</span><span>${sgEff}</span>${live}</div>`;
+      }).join('');
+      return `
+        <div class="rd-card" style="border-top-color:${color};" ${variantNote ? `title="${rdEsc(variantNote)}"` : ''}>
+          <div class="rd-card-top"><span class="rd-style">${rdEsc(s.group)}</span>${nowTag}</div>
+          <div class="rd-days">${s.totalDays}<small>hari total</small></div>
+          <div class="rd-sub">Pernah jalan <b>${s.runs} kali</b> di line ini</div>
+          <div class="rd-range">${fmtDate(s.firstDate)} → ${fmtDate(s.lastDate)}</div>
+          <div class="rd-meta">${effHtml}${jenisTag}${adiraTag}</div>
+          <details class="lh-details"><summary>Detail ${s.segments.length} segmen</summary><div class="lh-segs">${segRows}</div></details>
+        </div>`;
+    }).join('');
+
+    blocks.push(`
+      <div class="rd-line">
+        <div class="rd-line-head">
+          <span class="rd-line-name">${rdEsc(l.line)}</span>
+          ${statusHtml}
+          <span class="lh-chip">Data pertama <b>${fmtDate(l.firstDate)}</b></span>
+          <span class="lh-chip" title="${minAge ? 'Data pertama line ini sama dengan data pertama seluruh sheet, jadi umur sebenarnya bisa lebih lama' : ''}">Umur <b>${minAge ? '≥ ' : ''}${lhAgeText(l.firstDate, today)}</b></span>
+          <span class="lh-chip"><b>${l.productionDays}</b> hari produksi</span>
+          <span class="lh-chip"><b>${l.styles.length}</b> style pernah jalan</span>
+        </div>
+        <div class="rd-line-body"><div class="rd-cards">${cards}</div></div>
+      </div>`);
+  });
+
+  document.getElementById('lhSummary').innerHTML = `
+    <div class="rd-stat"><div class="rd-stat-val">${lineCount}</div><div class="rd-stat-lbl">Line ditampilkan</div></div>
+    <div class="rd-stat"><div class="rd-stat-val">${activeLines}</div><div class="rd-stat-lbl">Line aktif</div></div>
+    <div class="rd-stat"><div class="rd-stat-val">${allGroups.size}</div><div class="rd-stat-lbl">Style berbeda pernah jalan</div></div>`;
+
+  document.getElementById('lhArea').innerHTML = blocks.length ? blocks.join('')
+    : '<div class="hint">Tidak ada data yang cocok dengan filter ini.</div>';
+}
+
+document.getElementById('lhApplyBtn').addEventListener('click', renderLineHistory);
+document.getElementById('lhRefreshBtn').addEventListener('click', loadLineHistory);
+
 function switchTab(tabName){
   document.querySelectorAll('#sidebarNav button').forEach(b=>b.classList.toggle('active', b.dataset.tab===tabName));
   document.querySelectorAll('.tab-content').forEach(t=>t.style.display='none');
@@ -3873,6 +4053,7 @@ function switchTab(tabName){
   if(tabName==='skill') initSkillTab();
   if(tabName==='evaluasi') initEvaluasiTab();
   if(tabName==='running') initRunningTab();
+  if(tabName==='linehistory') initLineHistoryTab();
   saveUiState();
 }
 document.querySelectorAll('#sidebarNav button').forEach(btn=>{
