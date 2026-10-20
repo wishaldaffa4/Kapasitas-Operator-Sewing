@@ -4004,8 +4004,12 @@ function renderLineHistory(){
       const color = colorOf[s.group];
       const variantNote = s.variants.length > 1 ? `Varian nama: ${s.variants.join(' / ')}` : '';
       const nowTag = (s.active && lineActive) ? '<span class="rd-now live">● Berjalan</span>' : '';
-      const effHtml = s.avgEff===null ? '<span class="rd-tag">EFF -</span>'
-        : `<span class="eff-pill ${effClass(s.avgEff)}" title="Rata-rata EFF harian seluruh riwayat style ini di line ini">EFF ${s.avgEff.toFixed(1)}%</span>`;
+      // EFF di kartu = yang TERTINGGI dari rata-rata EFF antar segmen (angka yang sama
+      // dengan yang tampil di "Detail segmen").
+      const segEffs = s.segments.map(sg=> sg.avgEff).filter(v=> v!==null);
+      const maxSegEff = segEffs.length ? Math.max(...segEffs) : null;
+      const effHtml = maxSegEff===null ? '<span class="rd-tag">EFF -</span>'
+        : `<span class="eff-pill ${effClass(maxSegEff)}" title="EFF tertinggi dari rata-rata EFF antar segmen (lihat Detail segmen)">EFF maks ${maxSegEff.toFixed(1)}%</span>`;
       const jenisTag = s.jenis ? `<span class="rd-tag">${rdEsc(s.jenis)}</span>` : '';
       const adiraTag = s.adira ? `<span class="rd-tag">${rdEsc(s.adira)}</span>` : '';
       const segRows = s.segments.map(sg=>{
