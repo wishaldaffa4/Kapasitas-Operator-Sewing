@@ -66,6 +66,31 @@
   #evalTable td:nth-child(3), #evalTable th:nth-child(3){position:sticky;left:240px;z-index:2;background:var(--panel);width:60px;min-width:60px;box-shadow:2px 0 4px -2px rgba(0,0,0,.4);}
   #evalTable thead th:nth-child(1), #evalTable thead th:nth-child(2), #evalTable thead th:nth-child(3){background:var(--panel2);z-index:3;}
   .eff-pill{display:inline-block;padding:2px 8px;border-radius:20px;font-weight:600;font-size:11.5px;}
+  /* ---------- Tab Running Days (dashboard) ---------- */
+  .rd-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:14px;}
+  .rd-stat{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px 14px;}
+  .rd-stat .rd-stat-val{font-size:22px;font-weight:700;color:var(--text);line-height:1.2;}
+  .rd-stat .rd-stat-lbl{font-size:11.5px;color:var(--text-dim);margin-top:2px;}
+  .rd-line{background:var(--panel);border:1px solid var(--border);border-radius:10px;margin-bottom:16px;overflow:hidden;}
+  .rd-line-head{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px 14px;padding:12px 16px;background:var(--panel2);border-bottom:1px solid var(--border);}
+  .rd-line-name{font-size:18px;font-weight:800;color:var(--accent);letter-spacing:.3px;}
+  .rd-line-now{font-size:13px;color:var(--text);}
+  .rd-line-body{padding:14px 16px 6px;}
+  .rd-timeline{display:flex;gap:3px;height:30px;margin-bottom:14px;}
+  .rd-bar{min-width:6px;border-radius:5px;display:flex;align-items:center;padding:0 7px;font-size:11px;font-weight:600;color:#10131a;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
+  .rd-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;margin-bottom:12px;}
+  .rd-card{background:var(--panel2);border:1px solid var(--border);border-radius:9px;padding:11px 13px;border-top-width:3px;}
+  .rd-card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px;}
+  .rd-style{font-weight:700;font-size:13px;color:var(--text);word-break:break-word;}
+  .rd-days{font-size:28px;font-weight:800;color:var(--text);line-height:1.1;}
+  .rd-days small{font-size:12px;font-weight:500;color:var(--text-dim);margin-left:4px;}
+  .rd-sub,.rd-range{font-size:11.5px;color:var(--text-dim);margin-top:4px;line-height:1.5;}
+  .rd-meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:9px;}
+  .rd-tag{font-size:10.5px;padding:2px 8px;border-radius:20px;background:var(--panel);border:1px solid var(--border);color:var(--text-dim);}
+  .rd-now{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap;}
+  .rd-now.live{background:rgba(62,207,142,.15);color:var(--good);}
+  .rd-now.stale{background:var(--panel);border:1px solid var(--border);color:var(--text-dim);}
+
   .eff-good{background:rgba(62,207,142,.15);color:var(--good);}
   .eff-warn{background:rgba(224,167,46,.15);color:var(--warn);}
   .eff-bad{background:rgba(224,85,78,.15);color:var(--bad);}
@@ -153,6 +178,7 @@
     <button data-tab="wip"><span class="side-icon">📉</span> Dashboard WIP</button>
     <button data-tab="skill"><span class="side-icon">🧩</span> Skill Operator</button>
     <button data-tab="evaluasi"><span class="side-icon">📋</span> Evaluasi &amp; Follow Up</button>
+    <button data-tab="running"><span class="side-icon">🏃</span> Running Days</button>
     <hr>
     <button data-tab="settings"><span class="side-icon">⚙️</span> Pengaturan</button>
   </aside>
@@ -552,6 +578,29 @@
         <div id="evalWeekTableArea"></div>
       </div>
     </div>
+  </div>
+
+  <!-- TAB: RUNNING DAYS PER LINE -->
+  <div id="tab-running" class="tab-content" style="display:none;">
+    <div class="panel">
+      <div class="panel-body">
+        <div class="row" style="margin-bottom:6px;">
+          <div class="field" style="min-width:200px;" id="rdLineMS"></div>
+          <div class="field" style="min-width:220px;" id="rdStyleMS"></div>
+          <div class="field"><label>&nbsp;</label><button id="rdApplyBtn" class="secondary">Terapkan Filter</button></div>
+          <div class="field"><label>&nbsp;</label><button id="rdRefreshBtn">🔄 Muat ulang</button></div>
+          <span class="hint" id="rdMsg" style="align-self:center;"></span>
+        </div>
+        <div class="hint" id="rdSubtitle"></div>
+        <details id="rdUnmappedBox" style="display:none;margin-top:10px;">
+          <summary id="rdUnmappedSummary" style="cursor:pointer;color:var(--warn);font-size:12.5px;"></summary>
+          <div class="hint" style="margin:6px 0;">Style di bawah ini ada di data bulan ini tapi belum tercatat di sheet Database Order Style, jadi dihitung sendiri-sendiri. Kalau ordernya sama dengan style lain, tambahkan barisnya di sheet itu dan isi kolom Grup Order, lalu klik Muat ulang.</div>
+          <div id="rdUnmappedList" style="font-size:12px;line-height:1.7;"></div>
+        </details>
+      </div>
+    </div>
+    <div id="rdSummary" class="rd-summary"></div>
+    <div id="rdArea"><div class="hint">Memuat...</div></div>
   </div>
 
   <!-- TAB: KAPASITAS -->
@@ -2800,7 +2849,7 @@ function createMultiSelect(containerId, labelPrefix, options){
   });
 
   renderOptions(''); updateToggleLabel();
-  return { getSelected: ()=> [...selected] };
+  return { getSelected: ()=> [...selected], destroy: ()=> panel.remove() };
 }
 document.addEventListener('click', ()=> document.querySelectorAll('.ms-panel').forEach(p=> p.style.display='none'));
 
@@ -3667,6 +3716,151 @@ document.getElementById('evalRefreshBtn').addEventListener('click', loadEvaluasi
 document.querySelectorAll('.eval-filter').forEach(cb=> cb.addEventListener('change', renderEvaluasiBagian2And3));
 document.getElementById('evalProsesApplyBtn').addEventListener('click', renderEvaluasiBagian2And3);
 
+/* ---------- Tab: Running Days per Line ---------- */
+let rdData = null;
+let rdLoadedMonth = null;
+let rdLineMS = null, rdStyleMS = null;
+let rdOptionsKey = '';
+const RD_PALETTE = ['#4d9fff','#3ecf8e','#e0a72e','#f472b6','#a78bfa','#22c1c3','#e67e22','#9bd84e','#ff7a7a','#7aa2ff','#c792ea','#5fd3bc'];
+
+function rdEsc(s){
+  return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function initRunningTab(){
+  const month = todayStr().slice(0,7);
+  if(rdData === null || rdLoadedMonth !== month){
+    await loadRunningDays(month);
+  }else{
+    renderRunningDays();
+  }
+}
+
+async function loadRunningDays(month){
+  const msg = document.getElementById('rdMsg');
+  msg.textContent = 'Memuat data Efisiensi Line...';
+  try{
+    // Diantre bareng Simpan/Cetak supaya tidak bertabrakan di koneksi yang lemah
+    rdData = await queuedFetch(()=> gasGet('getRunningDays&month=' + encodeURIComponent(month)));
+    rdLoadedMonth = month;
+    msg.textContent = '';
+  }catch(e){
+    msg.textContent = 'Gagal memuat: ' + e.message;
+    document.getElementById('rdArea').innerHTML = '<div class="hint">Gagal memuat data. Pastikan Code.gs sudah di-deploy ulang dan nama sheet "Efisiensi Line" serta "Database Order Style" sudah benar.</div>';
+    return;
+  }
+  setupRunningFilters();
+  renderRunningDays();
+}
+
+function setupRunningFilters(){
+  const lines = rdData.lines.map(l=>l.line);
+  const styleSet = new Set();
+  rdData.lines.forEach(l=> l.segments.forEach(s=> styleSet.add(s.group)));
+  const styles = [...styleSet].sort((a,b)=> a.localeCompare(b,'id'));
+  const key = lines.join('|') + '#' + styles.join('|');
+  if(key === rdOptionsKey) return;
+  if(rdLineMS) rdLineMS.destroy();
+  if(rdStyleMS) rdStyleMS.destroy();
+  rdLineMS = createMultiSelect('rdLineMS', 'Line', lines);
+  rdStyleMS = createMultiSelect('rdStyleMS', 'Style', styles);
+  rdOptionsKey = key;
+}
+
+function renderRunningDays(){
+  if(!rdData) return;
+  const selLines = rdLineMS ? rdLineMS.getSelected() : [];
+  const selStyles = rdStyleMS ? rdStyleMS.getSelected() : [];
+
+  // warna konsisten per style di semua line
+  const allGroups = new Set();
+  rdData.lines.forEach(l=> l.segments.forEach(s=> allGroups.add(s.group)));
+  const colorOf = {};
+  [...allGroups].sort((a,b)=> a.localeCompare(b,'id')).forEach((g,i)=>{ colorOf[g] = RD_PALETTE[i % RD_PALETTE.length]; });
+
+  const monthLabel = new Date(rdData.month + '-01T00:00:00').toLocaleDateString('id-ID', { month:'long', year:'numeric' });
+  document.getElementById('rdSubtitle').textContent =
+    `Bulan ${monthLabel} · data terakhir di sheet: ${rdData.lastDateAll ? fmtDate(rdData.lastDateAll) : '-'} · running days dihitung dari awal rentetan berjalan (bisa mulai sebelum bulan ini).`;
+
+  // style belum terdaftar
+  const unmapped = rdData.unmappedStyles || [];
+  const box = document.getElementById('rdUnmappedBox');
+  if(unmapped.length){
+    box.style.display = '';
+    document.getElementById('rdUnmappedSummary').textContent = `⚠ ${unmapped.length} style belum terdaftar di Database Order Style (klik untuk lihat)`;
+    document.getElementById('rdUnmappedList').innerHTML = unmapped.map(s=> '• ' + rdEsc(s)).join('<br>');
+  }else{
+    box.style.display = 'none';
+  }
+
+  const blocks = [];
+  let lineCount = 0;
+  const runningGroups = new Set();
+
+  rdData.lines.forEach(l=>{
+    if(selLines.length && !selLines.includes(l.line)) return;
+    const segs = l.segments.filter(s=> !selStyles.length || selStyles.includes(s.group));
+    if(!segs.length) return;
+    lineCount++;
+
+    const stale = rdData.lastDateAll && l.lastDate < rdData.lastDateAll;
+    const totalByGroup = {};
+    segs.forEach(s=>{ totalByGroup[s.group] = (totalByGroup[s.group]||0) + s.daysInMonth; });
+
+    const active = segs.filter(s=> s.active);
+    if(!stale) active.forEach(s=> runningGroups.add(s.group));
+    const nowHtml = active.length
+      ? (stale ? `Terakhir jalan ${fmtDate(l.lastDate)}: ` : 'Sedang jalan: ')
+        + active.map(s=> `<b>${rdEsc(s.group)}</b> — ${s.totalDays} hari`).join(' · ')
+      : '<span style="color:var(--text-dim);">Tidak ada style berjalan di akhir data</span>';
+
+    const barTotal = segs.reduce((a,s)=> a + s.daysInMonth, 0) || 1;
+    const bars = segs.map(s=>
+      `<div class="rd-bar" style="flex:${s.daysInMonth};background:${colorOf[s.group]};" title="${rdEsc(s.group)} · ${s.daysInMonth} hari di bulan ini (${fmtDate(s.start)} - ${fmtDate(s.end)})">${s.daysInMonth/barTotal > 0.07 ? rdEsc(s.group) + ' · ' + s.daysInMonth : ''}</div>`
+    ).join('');
+
+    const cards = segs.map(s=>{
+      const startedBefore = s.start < rdData.monthStart;
+      const variantNote = s.variants.length > 1 ? `Varian nama: ${s.variants.join(' / ')}` : '';
+      const nowTag = s.active
+        ? (stale ? `<span class="rd-now stale">Terakhir jalan ${fmtDate(s.end)}</span>` : `<span class="rd-now live">● Berjalan</span>`)
+        : '';
+      const effHtml = s.avgEff===null ? '<span class="rd-tag">EFF -</span>'
+        : `<span class="eff-pill ${effClass(s.avgEff)}" title="Rata-rata EFF harian segmen ini di bulan ini">EFF ${s.avgEff.toFixed(1)}%</span>`;
+      const adiraTag = s.adira ? `<span class="rd-tag">${rdEsc(s.adira)}</span>` : '';
+      const jenisTag = s.jenis ? `<span class="rd-tag">${rdEsc(s.jenis)}</span>` : '';
+      return `
+        <div class="rd-card" style="border-top-color:${colorOf[s.group]};" ${variantNote ? `title="${rdEsc(variantNote)}"` : ''}>
+          <div class="rd-card-top"><span class="rd-style">${rdEsc(s.group)}</span>${nowTag}</div>
+          <div class="rd-days">${s.totalDays}<small>hari berjalan</small></div>
+          <div class="rd-sub">${s.daysInMonth} hari di bulan ini · total style ini di line ini bulan ini: <b>${totalByGroup[s.group]} hari</b></div>
+          <div class="rd-range">${fmtDate(s.start)} → ${fmtDate(s.end)}${startedBefore ? ' <i>(mulai sebelum bulan ini)</i>' : ''}</div>
+          <div class="rd-meta">${effHtml}${jenisTag}${adiraTag}</div>
+        </div>`;
+    }).join('');
+
+    blocks.push(`
+      <div class="rd-line">
+        <div class="rd-line-head"><span class="rd-line-name">${rdEsc(l.line)}</span><span class="rd-line-now">${nowHtml}</span></div>
+        <div class="rd-line-body">
+          <div class="rd-timeline">${bars}</div>
+          <div class="rd-cards">${cards}</div>
+        </div>
+      </div>`);
+  });
+
+  document.getElementById('rdSummary').innerHTML = `
+    <div class="rd-stat"><div class="rd-stat-val">${lineCount}</div><div class="rd-stat-lbl">Line ditampilkan</div></div>
+    <div class="rd-stat"><div class="rd-stat-val">${runningGroups.size}</div><div class="rd-stat-lbl">Style sedang berjalan</div></div>
+    <div class="rd-stat"><div class="rd-stat-val">${rdData.lastDateAll ? fmtDate(rdData.lastDateAll) : '-'}</div><div class="rd-stat-lbl">Data terakhir di sheet</div></div>`;
+
+  document.getElementById('rdArea').innerHTML = blocks.length ? blocks.join('')
+    : '<div class="hint">Tidak ada data yang cocok dengan filter ini di bulan ini.</div>';
+}
+
+document.getElementById('rdApplyBtn').addEventListener('click', renderRunningDays);
+document.getElementById('rdRefreshBtn').addEventListener('click', ()=> loadRunningDays(todayStr().slice(0,7)));
+
 function switchTab(tabName){
   document.querySelectorAll('#sidebarNav button').forEach(b=>b.classList.toggle('active', b.dataset.tab===tabName));
   document.querySelectorAll('.tab-content').forEach(t=>t.style.display='none');
@@ -3678,6 +3872,7 @@ function switchTab(tabName){
   if(tabName==='wip') initWipTab();
   if(tabName==='skill') initSkillTab();
   if(tabName==='evaluasi') initEvaluasiTab();
+  if(tabName==='running') initRunningTab();
   saveUiState();
 }
 document.querySelectorAll('#sidebarNav button').forEach(btn=>{
