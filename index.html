@@ -3411,6 +3411,10 @@ function renderEvaluasiBagian2And3(){
   });
 
   const tbody = document.getElementById('evalBagian2Body');
+  // Data absensi ditarik terpisah & menyusul setelah data utama. Selama belum
+  // selesai (null), tampilkan "memuat" supaya beda dari operator yang memang kosong.
+  const attLoading = evalAttendanceByNip === null;
+  const loadingHtml = '<span class="hint">⏳ memuat</span>';
   tbody.innerHTML = rows.length ? rows.map(r=>`
     <tr>
       <td data-label="No. Absen">${r.noAbsen}</td>
@@ -3426,8 +3430,8 @@ function renderEvaluasiBagian2And3(){
       <td data-label="Status Skill">${statusBadgeHtml(r.statusSkill)}</td>
       <td data-label="EFF Terbaik">${r.eff===null ? '-' : `<span class="eff-pill ${statusEffClass(r.statusEff)}">${r.eff.toFixed(2)}%</span>`}</td>
       <td data-label="Status Efisiensi">${statusBadgeHtml(r.statusEff)}</td>
-      <td data-label="% Absensi">${r.pctTm===null ? '-' : `<span class="eff-pill ${statusEffClass(r.statusAbsensi)} absensi-detail-trigger" style="cursor:pointer;" data-nip="${r.noAbsen}" title="Klik untuk lihat rincian 4 kuartal">${r.pctTm.toFixed(1)}% 🔍</span>`}</td>
-      <td data-label="Status Absensi">${statusBadgeHtml(r.statusAbsensi)}</td>
+      <td data-label="% Absensi">${r.pctTm===null ? (attLoading ? loadingHtml : '-') : `<span class="eff-pill ${statusEffClass(r.statusAbsensi)} absensi-detail-trigger" style="cursor:pointer;" data-nip="${r.noAbsen}" title="Klik untuk lihat rincian 4 kuartal">${r.pctTm.toFixed(1)}% 🔍</span>`}</td>
+      <td data-label="Status Absensi">${r.statusAbsensi===null && attLoading ? loadingHtml : statusBadgeHtml(r.statusAbsensi)}</td>
     </tr>
   `).join('') : `<tr><td colspan="15" style="text-align:center;color:var(--text-dim);padding:16px;">Tidak ada operator yang cocok dengan filter ini.</td></tr>`;
 
@@ -3439,6 +3443,7 @@ function renderEvaluasiBagian2And3(){
   renderEvalStatusChart('evalChartSkill', rows, 'statusSkill');
   renderEvalStatusChart('evalChartEff', rows, 'statusEff');
   renderEvalStatusChart('evalChartAbsensi', rows, 'statusAbsensi');
+  if(attLoading) document.getElementById('evalChartAbsensi').innerHTML = '<div class="hint">⏳ Memuat data absensi...</div>';
 
   renderEvaluasiWeekSection(rows);
 }
