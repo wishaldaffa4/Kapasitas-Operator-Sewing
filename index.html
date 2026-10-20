@@ -3978,7 +3978,16 @@ function renderLineHistory(){
   const blocks = [];
   let lineCount = 0, activeLines = 0;
 
-  lhData.lines.forEach(l=>{
+  // Line AKTIF (data terakhirnya sama dengan data terakhir sheet) ditampilkan dulu,
+  // baru yang tidak aktif. Di dalam tiap kelompok, urutan nama Line wajar (F02 sebelum F10).
+  const orderedLines = lhData.lines.slice().sort((a,b)=>{
+    const aa = !!lhData.lastDateAll && a.lastDate === lhData.lastDateAll;
+    const bb = !!lhData.lastDateAll && b.lastDate === lhData.lastDateAll;
+    if(aa !== bb) return aa ? -1 : 1;
+    return a.line.localeCompare(b.line, 'id', { numeric: true });
+  });
+
+  orderedLines.forEach(l=>{
     if(selLines.length && !selLines.includes(l.line)) return;
     const styles = l.styles.filter(s=> !selStyles.length || selStyles.includes(s.group));
     if(!styles.length) return;
