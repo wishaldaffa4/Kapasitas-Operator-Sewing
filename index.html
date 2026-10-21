@@ -3847,7 +3847,9 @@ function renderRunningDays(){
     if(!segs.length) return;
     lineCount++;
 
-    const stale = rdData.lastDateAll && l.lastDate < rdData.lastDateAll;
+    // Line dianggap berhenti kalau lebih lama dari batas aktif (toleransi hari produksi dari server);
+    // kalau server belum mengirim batas itu, pakai aturan lama (harus sama dengan data terakhir sheet).
+    const stale = rdData.activeCutoff ? l.lastDate < rdData.activeCutoff : (rdData.lastDateAll && l.lastDate < rdData.lastDateAll);
     const totalByGroup = {};
     segs.forEach(s=>{ totalByGroup[s.group] = (totalByGroup[s.group]||0) + s.daysInMonth; });
 
@@ -3974,7 +3976,7 @@ function renderLineHistory(){
   [...allGroups].sort((a,b)=> a.localeCompare(b,'id')).forEach((g,i)=>{ colorOf[g] = RD_PALETTE[i % RD_PALETTE.length]; });
 
   document.getElementById('lhSubtitle').textContent =
-    `Data di sheet: ${lhData.firstDateAll ? fmtDate(lhData.firstDateAll) : '-'} s/d ${lhData.lastDateAll ? fmtDate(lhData.lastDateAll) : '-'} · umur line dihitung dari tanggal data pertama line itu sampai hari ini.`
+    `Data di sheet: ${lhData.firstDateAll ? fmtDate(lhData.firstDateAll) : '-'} s/d ${lhData.lastDateAll ? fmtDate(lhData.lastDateAll) : '-'} · umur line dihitung dari tanggal data pertama line itu sampai hari ini. Line dianggap aktif kalau tidak lebih dari 1 hari produksi tanpa data (hari ketika semua line kosong dianggap libur).`
     + (lhData.outputAvailable === false ? ' ⚠ Data Output Line tidak terbaca: ' + lhData.outputError : '');
 
   const unmapped = lhData.unmappedStyles || [];
@@ -3992,25 +3994,37 @@ function renderLineHistory(){
 
   // Line AKTIF (data terakhirnya sama dengan data terakhir sheet) ditampilkan dulu,
   // baru yang tidak aktif. Di dalam tiap kelompok, urutan nama Line wajar (F02 sebelum F10).
+  // Aktif = tidak lebih dari batas toleransi hari produksi tanpa data (batas dari server);
+  // kalau server belum mengirimnya, pakai aturan lama.
+  const isLineActive = ln => lhData.activeCutoff ? ln.lastDate >= lhData.activeCutoff : (!!lhData.lastDateAll && ln.lastDate === lhData.lastDateAll);
   const orderedLines = lhData.lines.slice().sort((a,b)=>{
-    const aa = !!lhData.lastDateAll && a.lastDate === lhData.lastDateAll;
-    const bb = !!lhData.lastDateAll && b.lastDate === lhData.lastDateAll;
+    const aa = isLineActive(a);
+    const bb = isLineActive(b);
     if(aa !== bb) return aa ? -1 : 1;
     return a.line.localeCompare(b.line, 'id', { numeric: true });
   });
 
   orderedLines.forEach(l=>{
     if(selLines.length && !selLines.includes(l.line)) return;
-    const styles = l.styles.filter(s=> !selStyles.length || selStyles.includes(s.group));
+    // Kartu style: paling KIRI = style yang paling akhir jalan di line ini. Kalau beberapa style
+    // sama-sama terakhir jalan di tanggal yang sama (misal paralel), yang segmen terakhirnya
+    // mulai lebih baru didahulukan, baru terakhir urut abjad.
+    const lastStart = st => st.segments.reduce((m, sg)=> sg.start > m ? sg.start : m, '');
+    const styles = l.styles.filter(s=> !selStyles.length || selStyles.includes(s.group)).sort((a,b)=>{
+      if(a.lastDate !== b.lastDate) return a.lastDate > b.lastDate ? -1 : 1;
+      const sa = lastStart(a), sb = lastStart(b);
+      if(sa !== sb) return sa > sb ? -1 : 1;
+      return a.group.localeCompare(b.group, 'id');
+    });
     if(!styles.length) return;
     lineCount++;
 
-    const lineActive = lhData.lastDateAll && l.lastDate === lhData.lastDateAll;
+    const lineActive = isLineActive(l);
     if(lineActive) activeLines++;
     const minAge = lhData.firstDateAll && l.firstDate === lhData.firstDateAll;
     const statusHtml = lineActive
       ? '<span class="lh-status on">● Aktif</span>'
-      : `<span class="lh-status off" title="Data terakhir line ini ${fmtDate(l.lastDate)}, sedangkan data terakhir sheet ${fmtDate(lhData.lastDateAll)}">Tidak aktif sejak ${fmtDate(l.lastDate)} · ${lhDayDiff(l.lastDate, lhData.lastDateAll)} hari tanpa data</span>`;
+      : `<span class="lh-status off" title="Data terakhir line ini ${fmtDate(l.lastDate)}, sedangkan data terakhir sheet ${fmtDate(lhData.lastDateAll)}">Tidak aktif sejak ${fmtDate(l.lastDate)} · ${l.missedDays!==undefined ? l.missedDays + ' hari produksi' : lhDayDiff(l.lastDate, lhData.lastDateAll) + ' hari'} tanpa data</span>`;
 
     const cards = styles.map(s=>{
       const color = colorOf[s.group];
