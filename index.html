@@ -107,6 +107,20 @@
   .lh-cons-row:first-of-type{margin-top:8px;}
   .lh-cons-lbl{font-size:11.5px;color:var(--text-dim);min-width:140px;font-weight:600;}
   .lh-cons-note{font-size:11px;color:var(--text-dim);margin-top:8px;line-height:1.5;}
+  .cs-panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;margin-bottom:16px;padding:10px 16px 14px;}
+  .cs-panel > summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--text);user-select:none;}
+  .cs-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:14px;margin-top:12px;}
+  .cs-card{background:var(--panel2);border:1px solid var(--border);border-radius:9px;padding:12px 14px;}
+  .cs-title{font-weight:700;font-size:13px;color:var(--accent);margin-bottom:8px;}
+  .cs-bar-row{display:grid;grid-template-columns:minmax(80px,32%) 1fr 62px;gap:8px;align-items:center;margin-bottom:5px;font-size:12px;}
+  .cs-bar-lbl{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .cs-bar-track{background:var(--panel);border-radius:4px;height:14px;overflow:hidden;display:block;}
+  .cs-bar-fill{display:block;height:100%;background:var(--accent);border-radius:4px;}
+  .cs-bar-val{text-align:right;font-weight:700;color:var(--text);}
+  .cs-table{width:100%;min-width:0;border-collapse:collapse;font-size:11.5px;margin-top:10px;}
+  .cs-table th{text-align:left;color:var(--text-dim);font-weight:600;padding:4px 6px;border-bottom:1px solid var(--border);}
+  .cs-table td{padding:4px 6px;border-bottom:1px solid var(--border);vertical-align:top;}
+  .cs-note{font-size:11px;color:var(--text-dim);margin-top:6px;line-height:1.5;}
 
   .eff-good{background:rgba(62,207,142,.15);color:var(--good);}
   .eff-warn{background:rgba(224,167,46,.15);color:var(--warn);}
@@ -641,6 +655,7 @@
       </div>
     </div>
     <div id="lhSummary" class="rd-summary"></div>
+    <div id="lhConsSummary"></div>
     <div id="lhArea"><div class="hint">Memuat...</div></div>
   </div>
 
@@ -3802,6 +3817,57 @@ function lineConstructionHtml(styles, columns){
   const noteNoData = noData ? ` ${noData} style belum tercatat konstruksinya di Database Order Style.` : '';
   return `<details class="lh-cons-sum"><summary>Kesimpulan konstruksi yang pernah dikerjakan line ini (${rows.length} atribut · ${styles.length - noData} style)</summary>${rowHtml}<div class="lh-cons-note">Dihitung dari semua style yang pernah masuk ke line ini (tidak terpengaruh filter Style). Angka: jumlah style dan total hari produksi yang memuat nilai itu.${noteNoData}</div></details>`;
 }
+// Jumlah LINE AKTIF untuk setiap nilai konstruksi (per atribut). Sebuah line dihitung untuk suatu
+// nilai kalau pernah mengerjakan minimal satu style dengan nilai itu (seluruh histori line tsb).
+function constructionLineCounts(lines, columns, isActive){
+  const active = (lines||[]).filter(isActive)
+    .sort((a,b)=> String(a.line).localeCompare(String(b.line),'id',{numeric:true}));
+  const attrs = [];
+  (columns||[]).forEach(col=>{
+    const m = new Map();
+    let withData = 0;
+    active.forEach(l=>{
+      const seen = new Set();
+      (l.styles||[]).forEach(s=>{
+        ((s.construction && s.construction[col]) || []).forEach(v=>{
+          const k = String(v).toUpperCase();
+          if(seen.has(k)) return;
+          seen.add(k);
+          let e = m.get(k);
+          if(!e){ e = { label: v, lines: [] }; m.set(k, e); }
+          e.lines.push(l.line);
+        });
+      });
+      if(seen.size) withData++;
+    });
+    if(m.size){
+      const values = [...m.values()]
+        .map(e=> ({ label: e.label, count: e.lines.length, lines: e.lines }))
+        .sort((a,b)=> b.count - a.count || String(a.label).localeCompare(String(b.label),'id'));
+      attrs.push({ col, values, noData: active.length - withData });
+    }
+  });
+  return { activeCount: active.length, attrs };
+}
+function constructionSummaryHtml(res){
+  if(!res || !res.attrs.length) return '';
+  const cards = res.attrs.map(a=>{
+    const bars = a.values.map(v=>{
+      const pct = res.activeCount ? v.count / res.activeCount * 100 : 0;
+      return `<div class="cs-bar-row"><span class="cs-bar-lbl" title="${rdEsc(v.label)}">${rdEsc(v.label)}</span><span class="cs-bar-track"><span class="cs-bar-fill" style="width:${pct.toFixed(1)}%;"></span></span><span class="cs-bar-val">${v.count} line</span></div>`;
+    }).join('');
+    const rows = a.values.map(v=>{
+      const pct = res.activeCount ? Math.round(v.count / res.activeCount * 100) : 0;
+      return `<tr><td>${rdEsc(v.label)}</td><td style="text-align:center;"><b>${v.count}</b></td><td style="text-align:center;">${pct}%</td><td>${v.lines.map(rdEsc).join(', ')}</td></tr>`;
+    }).join('');
+    const noData = a.noData ? `<div class="cs-note">${a.noData} line aktif belum punya data konstruksi untuk atribut ini.</div>` : '';
+    return `<div class="cs-card"><div class="cs-title">${rdEsc(a.col)}</div>${bars}
+      <div style="overflow-x:auto;"><table class="cs-table"><thead><tr><th>Konstruksi</th><th style="text-align:center;">Jumlah line</th><th style="text-align:center;">% line aktif</th><th>Line</th></tr></thead><tbody>${rows}</tbody></table></div>${noData}</div>`;
+  }).join('');
+  return `<details class="cs-panel" open><summary>Ringkasan konstruksi: jumlah line aktif untuk tiap konstruksi (dari ${res.activeCount} line aktif)</summary>
+    <div class="cs-note" style="margin-top:6px;">Hanya line aktif yang dihitung. Sebuah line dihitung untuk suatu konstruksi kalau pernah mengerjakan minimal satu style dengan konstruksi itu di seluruh histori line tersebut. Persentase = jumlah line dibagi ${res.activeCount} line aktif; satu line bisa masuk lebih dari satu nilai dalam atribut yang sama.</div>
+    <div class="cs-grid">${cards}</div></details>`;
+}
 /* ---------- /Helper tag Output ---------- */
 
 /* ---------- Tab: Running Days per Line ---------- */
@@ -3975,6 +4041,12 @@ function lhDayDiff(a, b){
   return Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000);
 }
 
+// Line aktif (satu definisi untuk seluruh tab): tidak lebih dari batas toleransi hari produksi tanpa
+// data (batas dari server); kalau server belum mengirimnya, pakai aturan lama.
+function lhLineIsActive(ln){
+  return lhData.activeCutoff ? ln.lastDate >= lhData.activeCutoff : (!!lhData.lastDateAll && ln.lastDate === lhData.lastDateAll);
+}
+
 async function initLineHistoryTab(){
   if(lhData === null) await loadLineHistory();
   else renderLineHistory();
@@ -4042,7 +4114,7 @@ function renderLineHistory(){
   // baru yang tidak aktif. Di dalam tiap kelompok, urutan nama Line wajar (F02 sebelum F10).
   // Aktif = tidak lebih dari batas toleransi hari produksi tanpa data (batas dari server);
   // kalau server belum mengirimnya, pakai aturan lama.
-  const isLineActive = ln => lhData.activeCutoff ? ln.lastDate >= lhData.activeCutoff : (!!lhData.lastDateAll && ln.lastDate === lhData.lastDateAll);
+  const isLineActive = lhLineIsActive;
   const orderedLines = lhData.lines.slice().sort((a,b)=>{
     const aa = isLineActive(a);
     const bb = isLineActive(b);
@@ -4127,6 +4199,8 @@ function renderLineHistory(){
     <div class="rd-stat"><div class="rd-stat-val">${lineCount}</div><div class="rd-stat-lbl">Line ditampilkan</div></div>
     <div class="rd-stat"><div class="rd-stat-val">${activeLines}</div><div class="rd-stat-lbl">Line aktif</div></div>
     <div class="rd-stat"><div class="rd-stat-val">${allGroups.size}</div><div class="rd-stat-lbl">Style berbeda pernah jalan</div></div>`;
+
+  document.getElementById('lhConsSummary').innerHTML = constructionSummaryHtml(constructionLineCounts(lhData.lines, lhData.constructionColumns, lhLineIsActive));
 
   document.getElementById('lhArea').innerHTML = blocks.length ? blocks.join('')
     : '<div class="hint">Tidak ada data yang cocok dengan filter ini.</div>';
