@@ -99,6 +99,14 @@
   .lh-details summary{cursor:pointer;font-size:12px;color:var(--accent);user-select:none;}
   .lh-segs{margin-top:6px;display:flex;flex-direction:column;gap:4px;}
   .lh-seg{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:11.5px;color:var(--text-dim);align-items:center;padding:4px 6px;background:var(--panel);border-radius:6px;}
+  .rd-cons{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:11.5px;margin-top:6px;}
+  .rd-cons-lbl{color:var(--text-dim);}
+  .lh-cons-sum{margin:0 0 14px;background:var(--panel2);border:1px solid var(--border);border-radius:9px;padding:8px 12px;}
+  .lh-cons-sum summary{cursor:pointer;font-size:12.5px;color:var(--accent);font-weight:600;user-select:none;}
+  .lh-cons-row{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;padding:6px 0;border-top:1px dashed var(--border);}
+  .lh-cons-row:first-of-type{margin-top:8px;}
+  .lh-cons-lbl{font-size:11.5px;color:var(--text-dim);min-width:140px;font-weight:600;}
+  .lh-cons-note{font-size:11px;color:var(--text-dim);margin-top:8px;line-height:1.5;}
 
   .eff-good{background:rgba(62,207,142,.15);color:var(--good);}
   .eff-warn{background:rgba(224,167,46,.15);color:var(--warn);}
@@ -3757,6 +3765,43 @@ function outputTagHtml(avg, outDays, sharedDays, scopeNote){
     : '';
   return `<span class="rd-tag" style="color:var(--text);font-weight:600;" title="Output rata-rata per hari ${scopeNote} (${outDays} hari punya data output)">Output ${Math.round(avg)}/hari</span>${shared}`;
 }
+/* ---------- Konstruksi style (dipakai Running Days & Histori Line) ---------- */
+function constructionDetailsHtml(construction, columns){
+  if(!columns || !columns.length) return '';
+  const rows = columns.filter(c=> construction && construction[c] && construction[c].length)
+    .map(c=> `<span class="rd-cons-lbl">${rdEsc(c)}</span><span>${rdEsc(construction[c].join(' / '))}</span>`).join('');
+  if(!rows) return '<div class="rd-sub" style="margin-top:8px;">Konstruksi belum tercatat di Database Order Style</div>';
+  return `<details class="lh-details"><summary>Konstruksi</summary><div class="rd-cons">${rows}</div></details>`;
+}
+// Kesimpulan konstruksi apa saja yang pernah dikerjakan sebuah line, dari SEMUA style yang pernah
+// masuk ke line itu. Per atribut: tiap nilai + jumlah style + total hari produksinya di line ini.
+function lineConstructionHtml(styles, columns){
+  if(!columns || !columns.length) return '';
+  let noData = 0;
+  styles.forEach(s=>{ if(!s.construction || !Object.keys(s.construction).length) noData++; });
+  const rows = [];
+  columns.forEach(col=>{
+    const m = new Map();
+    styles.forEach(s=>{
+      ((s.construction && s.construction[col]) || []).forEach(v=>{
+        const k = String(v).toUpperCase();
+        let e = m.get(k);
+        if(!e){ e = { label: v, styles: 0, days: 0 }; m.set(k, e); }
+        e.styles++; e.days += s.totalDays;
+      });
+    });
+    if(m.size){
+      const vals = [...m.values()].sort((a,b)=> b.days - a.days || b.styles - a.styles || String(a.label).localeCompare(String(b.label),'id'));
+      rows.push({ col, vals });
+    }
+  });
+  if(!rows.length) return '';
+  const rowHtml = rows.map(r=>
+    `<div class="lh-cons-row"><span class="lh-cons-lbl">${rdEsc(r.col)}</span>${r.vals.map(v=>
+      `<span class="rd-tag" title="${v.styles} style · ${v.days} hari produksi di line ini">${rdEsc(v.label)} · ${v.styles} style · ${v.days} hari</span>`).join('')}</div>`).join('');
+  const noteNoData = noData ? ` ${noData} style belum tercatat konstruksinya di Database Order Style.` : '';
+  return `<details class="lh-cons-sum"><summary>Kesimpulan konstruksi yang pernah dikerjakan line ini (${rows.length} atribut · ${styles.length - noData} style)</summary>${rowHtml}<div class="lh-cons-note">Dihitung dari semua style yang pernah masuk ke line ini (tidak terpengaruh filter Style). Angka: jumlah style dan total hari produksi yang memuat nilai itu.${noteNoData}</div></details>`;
+}
 /* ---------- /Helper tag Output ---------- */
 
 /* ---------- Tab: Running Days per Line ---------- */
@@ -3882,6 +3927,7 @@ function renderRunningDays(){
           <div class="rd-sub">${s.daysInMonth} hari di bulan ini · total style ini di line ini bulan ini: <b>${totalByGroup[s.group]} hari</b></div>
           <div class="rd-range">${fmtDate(s.start)} → ${fmtDate(s.end)}${startedBefore ? ' <i>(mulai sebelum bulan ini)</i>' : ''}</div>
           <div class="rd-meta">${effHtml}${outputTagHtml(s.avgOutput, s.outputDays, s.outputSharedDays, 'dari hari-hari segmen ini di bulan ini')}${jenisTag}${adiraTag}</div>
+          ${constructionDetailsHtml(s.construction, rdData.constructionColumns)}
         </div>`;
     }).join('');
 
@@ -4058,6 +4104,7 @@ function renderLineHistory(){
           <div class="rd-sub">Pernah jalan <b>${s.runs} kali</b> di line ini</div>
           <div class="rd-range">${fmtDate(s.firstDate)} → ${fmtDate(s.lastDate)}</div>
           <div class="rd-meta">${effHtml}${outHtml}${jenisTag}${adiraTag}</div>
+          ${constructionDetailsHtml(s.construction, lhData.constructionColumns)}
           <details class="lh-details"><summary>Detail ${s.segments.length} segmen</summary><div class="lh-segs">${segRows}</div></details>
         </div>`;
     }).join('');
@@ -4072,7 +4119,7 @@ function renderLineHistory(){
           <span class="lh-chip"><b>${l.productionDays}</b> hari produksi</span>
           <span class="lh-chip"><b>${l.styles.length}</b> style pernah jalan</span>
         </div>
-        <div class="rd-line-body"><div class="rd-cards">${cards}</div></div>
+        <div class="rd-line-body">${lineConstructionHtml(l.styles, lhData.constructionColumns)}<div class="rd-cards">${cards}</div></div>
       </div>`);
   });
 
