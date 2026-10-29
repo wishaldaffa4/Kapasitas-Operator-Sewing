@@ -4049,6 +4049,15 @@ function lhLineIsActive(ln){
   return lhData.activeCutoff ? ln.lastDate >= lhData.activeCutoff : (!!lhData.lastDateAll && ln.lastDate === lhData.lastDateAll);
 }
 
+// Style (order) yang total harinya di sebuah line paling banyak sekian hari dianggap order singkat/percobaan:
+// disembunyikan dari histori dan tidak dihitung ke ringkasan konstruksi. Pengecualian: style yang SEDANG
+// berjalan di line yang masih aktif (order baru mulai, belum bisa dinilai).
+const LH_MIN_STYLE_DAYS = 3;
+function lhVisibleStyles(l){
+  const lineActive = lhLineIsActive(l);
+  return l.styles.filter(s=> s.totalDays > LH_MIN_STYLE_DAYS || (s.active && lineActive));
+}
+
 async function initLineHistoryTab(){
   if(lhData === null) await loadLineHistory();
   else renderLineHistory();
@@ -4073,7 +4082,7 @@ async function loadLineHistory(){
 function setupLineHistoryFilters(){
   const lines = lhData.lines.map(l=>l.line);
   const styleSet = new Set();
-  lhData.lines.forEach(l=> l.styles.forEach(s=> styleSet.add(s.group)));
+  lhData.lines.forEach(l=> lhVisibleStyles(l).forEach(s=> styleSet.add(s.group)));
   const styles = [...styleSet].sort((a,b)=> a.localeCompare(b,'id'));
   const key = lines.join('|') + '#' + styles.join('|');
   if(key === lhOptionsKey) return;
@@ -4092,11 +4101,14 @@ function renderLineHistory(){
 
   const allGroups = new Set();
   lhData.lines.forEach(l=> l.styles.forEach(s=> allGroups.add(s.group)));
+  const visibleGroups = new Set();
+  let hiddenCount = 0;
+  lhData.lines.forEach(l=>{ const v = lhVisibleStyles(l); hiddenCount += l.styles.length - v.length; v.forEach(s=> visibleGroups.add(s.group)); });
   const colorOf = {};
   [...allGroups].sort((a,b)=> a.localeCompare(b,'id')).forEach((g,i)=>{ colorOf[g] = RD_PALETTE[i % RD_PALETTE.length]; });
 
   document.getElementById('lhSubtitle').textContent =
-    `Data di sheet: ${lhData.firstDateAll ? fmtDate(lhData.firstDateAll) : '-'} s/d ${lhData.lastDateAll ? fmtDate(lhData.lastDateAll) : '-'} · umur line dihitung dari tanggal data pertama line itu sampai hari ini. Line dianggap aktif kalau tidak lebih dari 1 hari produksi tanpa data (hari ketika semua line kosong dianggap libur).`
+    `Data di sheet: ${lhData.firstDateAll ? fmtDate(lhData.firstDateAll) : '-'} s/d ${lhData.lastDateAll ? fmtDate(lhData.lastDateAll) : '-'} · umur line dihitung dari tanggal data pertama line itu sampai hari ini. Line dianggap aktif kalau tidak lebih dari 1 hari produksi tanpa data (hari ketika semua line kosong dianggap libur). Style yang total harinya di sebuah line ${LH_MIN_STYLE_DAYS} hari atau kurang disembunyikan, kecuali yang sedang berjalan${hiddenCount ? ` (${hiddenCount} tersembunyi)` : ''}.`
     + (lhData.outputAvailable === false ? ' ⚠ Data Output Line tidak terbaca: ' + lhData.outputError : '');
 
   const unmapped = lhData.unmappedStyles || [];
@@ -4130,13 +4142,15 @@ function renderLineHistory(){
     // sama-sama terakhir jalan di tanggal yang sama (misal paralel), yang segmen terakhirnya
     // mulai lebih baru didahulukan, baru terakhir urut abjad.
     const lastStart = st => st.segments.reduce((m, sg)=> sg.start > m ? sg.start : m, '');
-    const styles = l.styles.filter(s=> !selStyles.length || selStyles.includes(s.group)).sort((a,b)=>{
+    const visible = lhVisibleStyles(l);
+    const styles = visible.filter(s=> !selStyles.length || selStyles.includes(s.group)).sort((a,b)=>{
       if(a.lastDate !== b.lastDate) return a.lastDate > b.lastDate ? -1 : 1;
       const sa = lastStart(a), sb = lastStart(b);
       if(sa !== sb) return sa > sb ? -1 : 1;
       return a.group.localeCompare(b.group, 'id');
     });
-    if(!styles.length) return;
+    // Line yang SEMUA style-nya tersembunyi tetap tampil (dengan keterangan), kecuali kalau filter Style aktif.
+    if(!styles.length && !(visible.length === 0 && !selStyles.length)) return;
     lineCount++;
 
     const lineActive = isLineActive(l);
@@ -4191,18 +4205,18 @@ function renderLineHistory(){
           <span class="lh-chip">Data pertama <b>${fmtDate(l.firstDate)}</b></span>
           <span class="lh-chip" title="${minAge ? 'Data pertama line ini sama dengan data pertama seluruh sheet, jadi umur sebenarnya bisa lebih lama' : ''}">Umur <b>${minAge ? '≥ ' : ''}${lhAgeText(l.firstDate, today)}</b></span>
           <span class="lh-chip"><b>${l.productionDays}</b> hari produksi</span>
-          <span class="lh-chip"><b>${l.styles.length}</b> style pernah jalan</span>
+          <span class="lh-chip"><b>${visible.length}</b> style pernah jalan</span>
         </div>
-        <div class="rd-line-body">${lineConstructionHtml(l.styles, lhData.constructionColumns)}<div class="rd-cards">${cards}</div></div>
+        <div class="rd-line-body">${lineConstructionHtml(visible, lhData.constructionColumns)}${visible.length ? `<div class="rd-cards">${cards}</div>` : `<div class="hint" style="margin-bottom:10px;">Tidak ada style yang jalan lebih dari ${LH_MIN_STYLE_DAYS} hari di line ini.</div>`}</div>
       </div>`);
   });
 
   document.getElementById('lhSummary').innerHTML = `
     <div class="rd-stat"><div class="rd-stat-val">${lineCount}</div><div class="rd-stat-lbl">Line ditampilkan</div></div>
     <div class="rd-stat"><div class="rd-stat-val">${activeLines}</div><div class="rd-stat-lbl">Line aktif</div></div>
-    <div class="rd-stat"><div class="rd-stat-val">${allGroups.size}</div><div class="rd-stat-lbl">Style berbeda pernah jalan</div></div>`;
+    <div class="rd-stat"><div class="rd-stat-val">${visibleGroups.size}</div><div class="rd-stat-lbl">Style berbeda pernah jalan</div></div>`;
 
-  document.getElementById('lhConsSummary').innerHTML = constructionSummaryHtml(constructionLineCounts(lhData.lines, lhData.constructionColumns, lhLineIsActive), lhConsOpen);
+  document.getElementById('lhConsSummary').innerHTML = constructionSummaryHtml(constructionLineCounts(lhData.lines.map(l=> Object.assign({}, l, { styles: lhVisibleStyles(l) })), lhData.constructionColumns, lhLineIsActive), lhConsOpen);
 
   document.getElementById('lhArea').innerHTML = blocks.length ? blocks.join('')
     : '<div class="hint">Tidak ada data yang cocok dengan filter ini.</div>';
