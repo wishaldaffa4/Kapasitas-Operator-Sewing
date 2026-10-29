@@ -3849,7 +3849,7 @@ function constructionLineCounts(lines, columns, isActive){
   });
   return { activeCount: active.length, attrs };
 }
-function constructionSummaryHtml(res){
+function constructionSummaryHtml(res, isOpen){
   if(!res || !res.attrs.length) return '';
   const cards = res.attrs.map(a=>{
     const bars = a.values.map(v=>{
@@ -3864,7 +3864,7 @@ function constructionSummaryHtml(res){
     return `<div class="cs-card"><div class="cs-title">${rdEsc(a.col)}</div>${bars}
       <div style="overflow-x:auto;"><table class="cs-table"><thead><tr><th>Konstruksi</th><th style="text-align:center;">Jumlah line</th><th style="text-align:center;">% line aktif</th><th>Line</th></tr></thead><tbody>${rows}</tbody></table></div>${noData}</div>`;
   }).join('');
-  return `<details class="cs-panel" open><summary>Ringkasan konstruksi: jumlah line aktif untuk tiap konstruksi (dari ${res.activeCount} line aktif)</summary>
+  return `<details class="cs-panel" ontoggle="lhConsOpen=this.open"${isOpen ? ' open' : ''}><summary>Ringkasan konstruksi: jumlah line aktif untuk tiap konstruksi (dari ${res.activeCount} line aktif)</summary>
     <div class="cs-note" style="margin-top:6px;">Hanya line aktif yang dihitung. Sebuah line dihitung untuk suatu konstruksi kalau pernah mengerjakan minimal satu style dengan konstruksi itu di seluruh histori line tersebut. Persentase = jumlah line dibagi ${res.activeCount} line aktif; satu line bisa masuk lebih dari satu nilai dalam atribut yang sama.</div>
     <div class="cs-grid">${cards}</div></details>`;
 }
@@ -4021,6 +4021,7 @@ document.getElementById('rdRefreshBtn').addEventListener('click', ()=> loadRunni
 
 /* ---------- Tab: Histori Line ---------- */
 let lhData = null;
+let lhConsOpen = false;   // panel ringkasan konstruksi tertutup saat tab dibuka; statusnya diingat selama tab dipakai
 let lhLineMS = null, lhStyleMS = null;
 let lhOptionsKey = '';
 
@@ -4200,7 +4201,7 @@ function renderLineHistory(){
     <div class="rd-stat"><div class="rd-stat-val">${activeLines}</div><div class="rd-stat-lbl">Line aktif</div></div>
     <div class="rd-stat"><div class="rd-stat-val">${allGroups.size}</div><div class="rd-stat-lbl">Style berbeda pernah jalan</div></div>`;
 
-  document.getElementById('lhConsSummary').innerHTML = constructionSummaryHtml(constructionLineCounts(lhData.lines, lhData.constructionColumns, lhLineIsActive));
+  document.getElementById('lhConsSummary').innerHTML = constructionSummaryHtml(constructionLineCounts(lhData.lines, lhData.constructionColumns, lhLineIsActive), lhConsOpen);
 
   document.getElementById('lhArea').innerHTML = blocks.length ? blocks.join('')
     : '<div class="hint">Tidak ada data yang cocok dengan filter ini.</div>';
