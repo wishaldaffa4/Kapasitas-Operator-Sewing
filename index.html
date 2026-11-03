@@ -122,6 +122,32 @@
   .cs-table th{text-align:left;color:var(--text-dim);font-weight:600;padding:4px 6px;border-bottom:1px solid var(--border);}
   .cs-table td{padding:4px 6px;border-bottom:1px solid var(--border);vertical-align:top;}
   .cs-note{font-size:11px;color:var(--text-dim);margin-top:6px;line-height:1.5;}
+  /* ---------- Tab Plotting Default ---------- */
+  .pl-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:12px 0;}
+  .pl-banner{border-radius:8px;padding:10px 12px;margin:10px 0;font-size:12.5px;line-height:1.5;background:rgba(224,167,46,.12);border:1px solid var(--warn);color:var(--text);}
+  .pl-banner ul{margin:6px 0 8px 18px;padding:0;}
+  .pl-banner .pl-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;}
+  .pl-grid{border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-top:6px;}
+  .pl-row{display:grid;grid-template-columns:minmax(120px,1.2fr) minmax(0,3fr) 54px;gap:10px;padding:8px 12px;align-items:center;border-bottom:1px solid var(--border);}
+  .pl-row:last-child{border-bottom:none;}
+  .pl-row.head{background:var(--panel2);font-size:11.5px;color:var(--text-dim);}
+  .pl-row.empty{background:rgba(224,167,46,.10);}
+  .pl-proses{font-size:13px;word-break:break-word;}
+  .pl-ops{display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
+  .pl-chip{display:inline-flex;align-items:center;gap:2px;font-size:12px;background:rgba(77,159,255,.15);color:var(--accent);padding:3px 3px 3px 9px;border-radius:6px;}
+  .pl-chip.inactive{background:rgba(224,85,78,.15);color:var(--bad);}
+  .pl-x{background:transparent;border:none;color:inherit;cursor:pointer;padding:0 5px;font-size:14px;line-height:1;}
+  input.pl-add{min-width:170px;font-size:12px;padding:4px 8px;}
+  .pl-count{text-align:center;font-weight:700;}
+  .pl-cad-row{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1.2fr) 56px;gap:8px;padding:8px 12px;align-items:center;border-bottom:1px solid var(--border);}
+  .pl-cad-row:last-child{border-bottom:none;}
+  .pl-sub{font-size:11px;color:var(--text-dim);}
+  .pl-need{padding:8px 12px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;}
+  .pl-need:last-child{border-bottom:none;}
+  .pl-table{width:100%;min-width:0;border-collapse:collapse;font-size:12px;}
+  .pl-table th{text-align:left;color:var(--text-dim);font-weight:600;padding:4px 6px;border-bottom:1px solid var(--border);}
+  .pl-table td{padding:5px 6px;border-bottom:1px solid var(--border);vertical-align:top;}
+  .pl-style-head{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:baseline;margin:10px 0 4px;font-size:13px;font-weight:700;}
 
   .eff-good{background:rgba(62,207,142,.15);color:var(--good);}
   .eff-warn{background:rgba(224,167,46,.15);color:var(--warn);}
@@ -212,6 +238,7 @@
     <button data-tab="evaluasi"><span class="side-icon">📋</span> Evaluasi &amp; Follow Up</button>
     <button data-tab="running"><span class="side-icon">🏃</span> Running Days</button>
     <button data-tab="linehistory"><span class="side-icon">📜</span> Histori Line</button>
+    <button data-tab="plotting"><span class="side-icon">🧷</span> Plotting Default</button>
     <hr>
     <button data-tab="settings"><span class="side-icon">⚙️</span> Pengaturan</button>
   </aside>
@@ -658,6 +685,65 @@
     <div id="lhSummary" class="rd-summary"></div>
     <div id="lhConsSummary"></div>
     <div id="lhArea"><div class="hint">Memuat...</div></div>
+  </div>
+
+  <!-- TAB: PLOTTING DEFAULT -->
+  <div id="tab-plotting" class="tab-content" style="display:none;">
+    <div class="panel">
+      <div class="panel-title">Plotting Default Operator per Line per Style</div>
+      <div class="panel-body">
+        <div class="row" style="margin-bottom:8px;">
+          <span id="plotSaveStatus" style="font-size:12.5px;">✓ Tersimpan di Sheets</span>
+          <button id="plotSaveNowBtn" class="small">Simpan sekarang</button>
+          <button id="plotRefreshBtn" class="secondary small">🔄 Muat ulang</button>
+          <span class="hint" id="plotMsg" style="margin:0;"></span>
+        </div>
+        <div class="hint" style="margin-top:0;">Database default (tanpa tanggal) siapa mengerjakan proses apa di line dan style tertentu. Tersimpan di sheet "Plotting Default" dan bisa diubah kapan saja. Daftar proses mengikuti sheet Data SMV.</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Plot per style</div>
+      <div class="panel-body">
+        <div class="row" style="margin-bottom:6px;">
+          <div class="field" style="min-width:120px;"><label>Line</label><select id="plotLine"></select></div>
+          <div class="field" style="flex:1;min-width:240px;"><label>Style (dari Data SMV)</label><input id="plotStyle" list="plotStyleDL" placeholder="Ketik atau pilih style"></div>
+          <div class="field"><label>&nbsp;</label><button id="plotDeletePairBtn" class="danger">Hapus style ini dari line</button></div>
+        </div>
+        <div id="plotStyleChips" class="row" style="margin-bottom:0;"></div>
+        <div id="plotBanner"></div>
+        <div id="plotStats" class="pl-stats"></div>
+        <div id="plotGrid"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Perlu diisi <span id="plotNeedsCount" style="text-transform:none;font-weight:400;"></span></div>
+      <div class="panel-body" style="padding:0;"><div id="plotNeeds"></div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Belum diplot (CAD) <span id="plotCadCount" style="text-transform:none;font-weight:400;"></span></div>
+      <div class="panel-body">
+        <div class="row" style="margin-bottom:6px;"><div class="field" style="min-width:240px;"><input id="plotCadSearch" placeholder="Cari nama, NIP, atau skill"></div></div>
+        <div class="hint" style="margin-top:0;margin-bottom:8px;">Pilih Line dan Style di atas, lalu pilih proses untuk tiap operator dan tekan Plot.</div>
+        <div id="plotCad" class="pl-grid"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Database plotting (urut Line, Style, Proses)</div>
+      <div class="panel-body">
+        <div class="row" style="margin-bottom:6px;">
+          <div class="field" style="min-width:140px;"><label>Line</label><select id="plotDbLine"></select></div>
+          <div class="field" style="flex:1;min-width:240px;"><label>Cari operator, NIP, style, atau proses</label><input id="plotDbSearch" placeholder="Contoh: YULIA"></div>
+        </div>
+        <div id="plotDb"></div>
+      </div>
+    </div>
+
+    <datalist id="plotStyleDL"></datalist>
+    <datalist id="plotOpDL"></datalist>
   </div>
 
   <!-- TAB: KAPASITAS -->
@@ -4238,11 +4324,565 @@ function switchTab(tabName){
   if(tabName==='evaluasi') initEvaluasiTab();
   if(tabName==='running') initRunningTab();
   if(tabName==='linehistory') initLineHistoryTab();
+  if(tabName==='plotting') initPlottingTab();
   saveUiState();
 }
 document.querySelectorAll('#sidebarNav button').forEach(btn=>{
   btn.addEventListener('click', ()=> switchTab(btn.dataset.tab));
 });
+
+/* ---------- Tab: Plotting Default (database default operator per line per style) ---------- */
+const PLOT_LINES = LINES.filter(l=> l !== 'CAD' && l !== 'REPAIR');
+let plotRows = [];                          // {line, style, proses, nip, nama, diubah}; nip kosong = slot kosong (pengingat)
+let plotPending = { adds: [], dels: [] };   // perubahan yang belum dikonfirmasi server
+let plotInFlight = { adds: [], dels: [] };  // bagian dari plotPending yang sedang dikirim
+let plotSyncing = false;
+let plotInited = false;
+let plotSel = { line: '', style: '' };
+let plotMove = null;                        // operator yang menunggu konfirmasi dipindah dari line lain
+let plotVacated = [];                       // proses yang baru saja ditinggalkan (pengingat)
+let plotCadLimit = 40;
+let plotSyncTimer = null;
+let plotLastError = '';
+
+function plotEl(id){ return document.getElementById(id); }
+function plotNorm(s){ return String(s==null?'':s).replace(/\s+/g,' ').trim().toUpperCase(); }
+function plotNat(a,b){ return String(a).localeCompare(String(b),'id',{numeric:true,sensitivity:'base'}); }
+function plotKeyOf(r){ return [plotNorm(r.line), plotNorm(r.style), plotNorm(r.proses), plotNorm(r.nip)].join('||'); }
+function plotIsSlot(r){ return !plotNorm(r.nip); }
+function plotSamePos(a,b){ return plotNorm(a.line)===plotNorm(b.line) && plotNorm(a.style)===plotNorm(b.style) && plotNorm(a.proses)===plotNorm(b.proses); }
+function plotNowStamp(){
+  const d = new Date(), p = n=> String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+function plotPersist(){
+  storeSet('kap_plotRows', plotRows, true);
+  storeSet('kap_plotPending', plotPending, true);
+  storeSet('kap_plotSel', plotSel, true);
+}
+function plotMsg(t){ const el = plotEl('plotMsg'); if(el) el.textContent = t || ''; }
+
+/* --- antrean perubahan: yang saling membatalkan (tambah lalu hapus) tidak dikirim --- */
+function plotQueueAdd(row){
+  const k = plotKeyOf(row);
+  const i = plotPending.dels.findIndex(d=> plotKeyOf(d)===k && !plotInFlight.dels.includes(d));
+  if(i !== -1) plotPending.dels.splice(i,1);
+  else plotPending.adds.push(Object.assign({}, row));
+}
+function plotQueueDel(row){
+  const k = plotKeyOf(row);
+  const i = plotPending.adds.findIndex(a=> plotKeyOf(a)===k && !plotInFlight.adds.includes(a));
+  if(i !== -1) plotPending.adds.splice(i,1);
+  else plotPending.dels.push(Object.assign({}, row));
+}
+
+/* --- perubahan data --- */
+function plotAddRow(line, style, proses, nip, nama){
+  const row = { line, style, proses, nip, nama, diubah: plotNowStamp() };
+  if(plotRows.some(r=> plotKeyOf(r)===plotKeyOf(row))) return false;
+  // slot kosong untuk proses ini sudah terisi, tidak perlu pengingat lagi
+  const slotIdx = plotRows.findIndex(r=> plotIsSlot(r) && plotSamePos(r, row));
+  if(slotIdx !== -1 && !plotIsSlot(row)){ plotQueueDel(plotRows[slotIdx]); plotRows.splice(slotIdx,1); }
+  plotRows.push(row);
+  plotQueueAdd(row);
+  return true;
+}
+// Mengembalikan true kalau proses itu jadi KOSONG (lalu dibuatkan slot pengingat)
+function plotRemoveRow(r){
+  const idx = plotRows.findIndex(x=> plotKeyOf(x)===plotKeyOf(r));
+  if(idx === -1) return false;
+  const gone = plotRows.splice(idx,1)[0];
+  plotQueueDel(gone);
+  if(plotIsSlot(gone)) return false;
+  if(plotRows.some(x=> !plotIsSlot(x) && plotSamePos(x, gone))) return false;
+  const slot = { line: gone.line, style: gone.style, proses: gone.proses, nip: '', nama: '', diubah: plotNowStamp() };
+  if(!plotRows.some(x=> plotKeyOf(x)===plotKeyOf(slot))){ plotRows.push(slot); plotQueueAdd(slot); }
+  return true;
+}
+// Pindahkan operator ke line baru: hapus dari line lama (semua proses di sana), lalu tambahkan di sini
+function plotMoveOperator(nip, nama, line, style, proses){
+  const others = plotRows.filter(r=> !plotIsSlot(r) && plotNorm(r.nip)===plotNorm(nip) && plotNorm(r.line)!==plotNorm(line));
+  const vacated = [];
+  others.forEach(r=>{
+    if(plotRemoveRow(r) && !vacated.some(v=> plotSamePos(v, r))) vacated.push({ line: r.line, style: r.style, proses: r.proses });
+  });
+  plotAddRow(line, style, proses, nip, nama);
+  return vacated;
+}
+
+/* --- data referensi --- */
+function plotActiveOp(nip){
+  const n = plotNorm(nip);
+  return dataOpt.find(o=> plotNorm(o['NIP'])===n) || null;
+}
+function plotProsesList(style){
+  const s = plotNorm(style), seen = new Set(), out = [];
+  dataSmv.forEach(r=>{
+    if(plotNorm(r['STYLE']) !== s) return;
+    const p = String(r['PROSES']||'').replace(/\s+/g,' ').trim();
+    const k = plotNorm(p);
+    if(!p || seen.has(k)) return;
+    seen.add(k);
+    out.push({ proses: p, smv: (r['SMV']===undefined ? '' : r['SMV']), level: (r['LEVEL SKILL']===undefined ? '' : r['LEVEL SKILL']) });
+  });
+  return out;
+}
+function plotResolveStyle(text){
+  const n = plotNorm(text);
+  if(!n) return '';
+  const found = stylesList().find(s=> plotNorm(s)===n);
+  return found || '';
+}
+function plotResolveOperator(text){
+  const v = String(text||'').trim();
+  if(!v) return null;
+  const first = v.split(' - ')[0].trim();
+  let op = plotActiveOp(first);
+  if(op) return op;
+  op = plotActiveOp(v);
+  if(op) return op;
+  const byName = dataOpt.filter(o=> plotNorm(o['NAMA'])===plotNorm(v));
+  return byName.length===1 ? byName[0] : null;
+}
+
+/* --- hitungan --- */
+function plotRowsFor(line, style){
+  return plotRows.filter(r=> plotNorm(r.line)===plotNorm(line) && plotNorm(r.style)===plotNorm(style));
+}
+function plotPairs(){
+  const m = new Map();
+  plotRows.forEach(r=>{
+    const k = plotNorm(r.line) + '||' + plotNorm(r.style);
+    if(!m.has(k)) m.set(k, { line: r.line, style: r.style });
+  });
+  return [...m.values()].sort((a,b)=> plotNat(a.line,b.line) || plotNat(a.style,b.style));
+}
+// Per proses (urutan Data SMV): operator di dalamnya. Hanya operator AKTIF yang dihitung.
+function plotPairStats(line, style){
+  const items = new Map();
+  plotProsesList(style).forEach(p=> items.set(plotNorm(p.proses), { proses: p.proses, smv: p.smv, level: p.level, ops: [], inSmv: true }));
+  plotRowsFor(line, style).forEach(r=>{
+    const k = plotNorm(r.proses);
+    if(!items.has(k)) items.set(k, { proses: r.proses, smv: '', level: '', ops: [], inSmv: false });
+    if(plotIsSlot(r)) return;
+    const op = plotActiveOp(r.nip);
+    items.get(k).ops.push({ nip: r.nip, nama: op ? op['NAMA'] : (r.nama || r.nip), active: !!op });
+  });
+  const list = [...items.values()];
+  const nips = new Set();
+  let posisi = 0, inactive = 0, kosong = 0;
+  list.forEach(it=>{
+    const act = it.ops.filter(o=> o.active);
+    act.forEach(o=>{ nips.add(plotNorm(o.nip)); posisi++; });
+    inactive += it.ops.length - act.length;
+    if(!act.length) kosong++;
+  });
+  return { items: list, operatorsUnik: nips.size, posisi, kosong, inactive, total: list.length };
+}
+function plotNeedsFill(){
+  const out = [];
+  plotPairs().forEach(p=>{
+    const st = plotPairStats(p.line, p.style);
+    const missing = st.items.filter(it=> !it.ops.some(o=> o.active));
+    if(missing.length) out.push({ line: p.line, style: p.style, items: missing.map(it=> ({ proses: it.proses, reason: it.ops.length ? 'operator tidak aktif' : 'kosong' })) });
+  });
+  return out;
+}
+function plotCadList(){
+  const plotted = new Set(plotRows.filter(r=> !plotIsSlot(r)).map(r=> plotNorm(r.nip)));
+  return dataOpt.filter(o=> !plotted.has(plotNorm(o['NIP']))).sort((a,b)=> plotNat(a['NAMA']||'', b['NAMA']||''));
+}
+function plotOpSkills(o){
+  return [o['JOB SPESIFIC'], o['SKILL 1'], o['SKILL 2'], o['SKILL 3']].filter(Boolean).join(' · ');
+}
+
+/* --- sinkron ke Sheets --- */
+function plotSetStatus(state, text){
+  const el = plotEl('plotSaveStatus');
+  if(!el) return;
+  const n = plotPending.adds.length + plotPending.dels.length;
+  if(state === 'saving') el.innerHTML = '⏳ Menyimpan ke Sheets...';
+  else if(state === 'error') el.innerHTML = `⚠ Belum tersimpan (${n} perubahan menunggu) — ${rdEsc(text || plotLastError)} <button class="small secondary" data-action="retry">Coba lagi</button>`;
+  else if(n) el.innerHTML = `⏳ ${n} perubahan menunggu disimpan...`;
+  else el.innerHTML = '✓ Tersimpan di Sheets';
+}
+function plotScheduleSync(){
+  clearTimeout(plotSyncTimer);
+  plotSetStatus('wait');
+  plotSyncTimer = setTimeout(()=> plotSyncNow(), 700);
+}
+function plotSyncNow(){
+  return queuedFetch(()=> doPlotSync());
+}
+async function doPlotSync(){
+  if(plotSyncing) return;
+  if(!plotPending.adds.length && !plotPending.dels.length){ plotSetStatus('ok'); return; }
+  if(!config.gasUrl){ plotLastError = 'URL Apps Script belum diatur'; plotSetStatus('error'); return; }
+  plotSyncing = true;
+  const snapAdds = plotPending.adds.slice(), snapDels = plotPending.dels.slice();
+  plotInFlight = { adds: snapAdds, dels: snapDels };
+  plotSetStatus('saving');
+  try{
+    const res = await gasPost('applyPlotting', {
+      adds: snapAdds.map(r=> ({ LINE: r.line, STYLE: r.style, PROSES: r.proses, NIP: r.nip, NAMA: r.nama })),
+      deletes: snapDels.map(r=> ({ LINE: r.line, STYLE: r.style, PROSES: r.proses, NIP: r.nip }))
+    });
+    plotPending.adds = plotPending.adds.filter(a=> !snapAdds.includes(a));
+    plotPending.dels = plotPending.dels.filter(d=> !snapDels.includes(d));
+    plotInFlight = { adds: [], dels: [] };
+    plotApplyServerRows(res.rows || []);
+    plotLastError = '';
+    plotSetStatus('ok');
+    renderPlotting();
+    if(plotPending.adds.length || plotPending.dels.length) plotScheduleSync();
+  }catch(e){
+    plotInFlight = { adds: [], dels: [] };
+    plotLastError = e.message || 'Gagal menyimpan';
+    plotPersist();
+    plotSetStatus('error', plotLastError);
+  }finally{
+    plotSyncing = false;
+  }
+}
+// Isi lokal diganti isi server, lalu perubahan yang belum terkirim diterapkan lagi di atasnya
+function plotApplyServerRows(rows){
+  plotRows = (rows || []).map(r=> ({
+    line: String(r.LINE||''), style: String(r.STYLE||''), proses: String(r.PROSES||''),
+    nip: String(r.NIP==null?'':r.NIP), nama: String(r.NAMA||''), diubah: String(r.DIUBAH||'')
+  }));
+  plotPending.dels.forEach(d=>{
+    const i = plotRows.findIndex(r=> plotKeyOf(r)===plotKeyOf(d));
+    if(i !== -1) plotRows.splice(i,1);
+  });
+  plotPending.adds.forEach(a=>{
+    if(!plotRows.some(r=> plotKeyOf(r)===plotKeyOf(a))) plotRows.push(Object.assign({}, a));
+  });
+  plotPersist();
+}
+async function plotPull(){
+  if(!config.gasUrl) return;
+  try{
+    if(plotPending.adds.length || plotPending.dels.length) await plotSyncNow();
+    const rows = await queuedFetch(()=> gasGet('getPlotting'));
+    plotApplyServerRows(rows);
+    plotSetStatus((plotPending.adds.length || plotPending.dels.length) ? 'wait' : 'ok');
+  }catch(e){
+    plotLastError = e.message || 'Gagal memuat';
+    plotSetStatus('error', plotLastError);
+  }
+}
+function plotAfterChange(){
+  plotPersist();
+  renderPlotting();
+  plotScheduleSync();
+}
+
+/* --- aksi pengguna --- */
+function plotTryAdd(inputValue, proses){
+  const line = plotSel.line, style = plotSel.style;
+  if(!line || !style){ plotMsg('Pilih Line dan Style dulu.'); return; }
+  const op = plotResolveOperator(inputValue);
+  if(!op){ plotMsg('Operator tidak ditemukan di daftar operator aktif: ' + String(inputValue||'').trim()); return; }
+  const nip = op['NIP'], nama = op['NAMA'];
+  if(plotRows.some(r=> !plotIsSlot(r) && plotSamePos(r, { line, style, proses }) && plotNorm(r.nip)===plotNorm(nip))){
+    plotMsg(`${nama} sudah ada di proses ${proses}.`); return;
+  }
+  const elsewhere = plotRows.filter(r=> !plotIsSlot(r) && plotNorm(r.nip)===plotNorm(nip) && plotNorm(r.line)!==plotNorm(line));
+  if(elsewhere.length){
+    plotMove = { nip, nama, line, style, proses, elsewhere: elsewhere.map(r=> ({ line: r.line, style: r.style, proses: r.proses })) };
+    plotMsg('');
+    renderPlotting();
+    return;
+  }
+  plotMsg('');
+  plotAddRow(line, style, proses, nip, nama);
+  plotAfterChange();
+}
+function plotConfirmMove(){
+  if(!plotMove) return;
+  const m = plotMove;
+  plotMove = null;
+  plotVacated = plotMoveOperator(m.nip, m.nama, m.line, m.style, m.proses);
+  plotMsg(`${m.nama} dipindahkan ke ${m.line}.`);
+  plotAfterChange();
+}
+function plotRemoveOperator(line, style, proses, nip){
+  const row = plotRows.find(r=> plotKeyOf(r)===plotKeyOf({ line, style, proses, nip }));
+  if(!row) return;
+  const vacated = plotRemoveRow(row);
+  if(vacated) plotVacated = [{ line, style, proses }];
+  plotMsg('');
+  plotAfterChange();
+}
+function plotDeletePair(){
+  const line = plotSel.line, style = plotSel.style;
+  if(!line || !style){ plotMsg('Pilih Line dan Style dulu.'); return; }
+  const rows = plotRowsFor(line, style);
+  if(!rows.length){ plotMsg('Belum ada plotting untuk style ini di line ini.'); return; }
+  const real = rows.filter(r=> !plotIsSlot(r)).length;
+  if(!confirm(`Hapus seluruh plotting style "${style}" dari line ${line}? (${real} posisi operator akan dikosongkan)`)) return;
+  rows.slice().forEach(r=>{
+    const i = plotRows.findIndex(x=> plotKeyOf(x)===plotKeyOf(r));
+    if(i !== -1){ plotRows.splice(i,1); plotQueueDel(r); }
+  });
+  plotMsg(`Plotting ${style} dihapus dari ${line}.`);
+  plotAfterChange();
+}
+function plotOpenPair(line, style){
+  plotSel = { line, style };
+  plotPersist();
+  renderPlotting();
+  const g = plotEl('plotStyleChips');
+  if(g && g.scrollIntoView) g.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/* --- tampilan --- */
+function renderPlotting(){
+  const noRef = !dataOpt.length || !dataSmv.length;
+  plotEl('plotStyleDL').innerHTML = stylesList().map(s=> `<option value="${rdEsc(s)}"></option>`).join('');
+  const where = new Map();
+  plotRows.forEach(r=>{
+    if(plotIsSlot(r)) return;
+    const k = plotNorm(r.nip);
+    if(!where.has(k)) where.set(k, new Set());
+    where.get(k).add(r.line);
+  });
+  plotEl('plotOpDL').innerHTML = dataOpt.map(o=>{
+    const w = where.get(plotNorm(o['NIP']));
+    return `<option value="${rdEsc(o['NIP'] + ' - ' + o['NAMA'])}" label="${w ? 'di ' + rdEsc([...w].join(', ')) : 'belum diplot'}"></option>`;
+  }).join('');
+
+  const lineSel = plotEl('plotLine');
+  lineSel.innerHTML = '<option value="">Pilih line</option>' + PLOT_LINES.map(l=> `<option value="${rdEsc(l)}">${rdEsc(l)}</option>`).join('');
+  lineSel.value = plotSel.line || '';
+  plotEl('plotStyle').value = plotSel.style || '';
+
+  plotRenderChips();
+  plotRenderBanner();
+  plotRenderGrid(noRef);
+  plotRenderNeeds();
+  plotRenderCad();
+  plotRenderDb();
+}
+function plotRenderChips(){
+  const box = plotEl('plotStyleChips');
+  if(!plotSel.line){ box.innerHTML = ''; return; }
+  const chips = plotPairs().filter(p=> plotNorm(p.line)===plotNorm(plotSel.line)).map(p=>{
+    const st = plotPairStats(p.line, p.style);
+    const on = plotNorm(p.style)===plotNorm(plotSel.style);
+    return `<button class="${on ? '' : 'secondary'} small" data-action="open" data-line="${encodeURIComponent(p.line)}" data-style="${encodeURIComponent(p.style)}">${rdEsc(p.style)} · ${st.operatorsUnik} operator</button>`;
+  }).join('');
+  box.innerHTML = chips ? `<span class="hint" style="margin:0;">Style di ${rdEsc(plotSel.line)}:</span>${chips}` : '';
+}
+function plotItemLabel(it){ return `${rdEsc(it.proses)}`; }
+function plotRenderBanner(){
+  const box = plotEl('plotBanner');
+  let html = '';
+  if(plotMove){
+    const m = plotMove;
+    html += `<div class="pl-banner">⚠ <b>${rdEsc(m.nama)}</b> (${rdEsc(m.nip)}) sudah diplot di line lain. Ubah plot di line itu dulu supaya tidak ganda:
+      <ul>${m.elsewhere.map(e=> `<li>${rdEsc(e.line)} · ${rdEsc(e.style)} · ${rdEsc(e.proses)}</li>`).join('')}</ul>
+      <div class="pl-btns"><button class="small" data-action="move-confirm">Hapus dari plot lama dan tambahkan di sini</button><button class="small secondary" data-action="move-cancel">Batal</button></div></div>`;
+  }
+  if(plotVacated.length){
+    html += `<div class="pl-banner">🔔 Proses berikut sekarang kosong, ingat isi penggantinya:
+      <ul>${plotVacated.map(v=> `<li>${rdEsc(v.line)} · ${rdEsc(v.style)} · ${rdEsc(v.proses)} <button class="small secondary" data-action="open" data-line="${encodeURIComponent(v.line)}" data-style="${encodeURIComponent(v.style)}">Buka</button></li>`).join('')}</ul>
+      <div class="pl-btns"><button class="small secondary" data-action="dismiss-vacated">Tutup</button></div></div>`;
+  }
+  box.innerHTML = html;
+}
+function plotRenderGrid(noRef){
+  const statsBox = plotEl('plotStats'), grid = plotEl('plotGrid');
+  if(noRef){
+    statsBox.innerHTML = '';
+    grid.innerHTML = '<div class="hint">Data operator atau Data SMV belum dimuat. Buka tab Pengaturan, pastikan URL Apps Script benar, lalu muat ulang.</div>';
+    return;
+  }
+  if(!plotSel.line || !plotSel.style){
+    statsBox.innerHTML = '';
+    grid.innerHTML = '<div class="hint">Pilih Line dan Style untuk mulai memplot operator.</div>';
+    return;
+  }
+  const st = plotPairStats(plotSel.line, plotSel.style);
+  if(!st.items.length){
+    statsBox.innerHTML = '';
+    grid.innerHTML = '<div class="hint">Style ini tidak punya proses di Data SMV.</div>';
+    return;
+  }
+  statsBox.innerHTML = `
+    <div class="rd-stat"><div class="rd-stat-val">${st.operatorsUnik}</div><div class="rd-stat-lbl">Operator unik</div></div>
+    <div class="rd-stat"><div class="rd-stat-val">${st.posisi}</div><div class="rd-stat-lbl">Posisi proses terisi</div></div>
+    <div class="rd-stat"><div class="rd-stat-val">${st.total - st.kosong}<span style="font-size:13px;color:var(--text-dim);"> dari ${st.total}</span></div><div class="rd-stat-lbl">Proses sudah ada operator</div></div>
+    <div class="rd-stat" style="${st.kosong ? 'border-color:var(--warn);' : ''}"><div class="rd-stat-val">${st.kosong}</div><div class="rd-stat-lbl">Proses belum ada operator</div></div>
+    ${st.inactive ? `<div class="rd-stat" style="border-color:var(--bad);"><div class="rd-stat-val">${st.inactive}</div><div class="rd-stat-lbl">Operator tidak aktif</div></div>` : ''}`;
+  const rows = st.items.map(it=>{
+    const empty = !it.ops.some(o=> o.active);
+    const meta = [ it.smv!=='' && !isNaN(Number(it.smv)) ? 'SMV ' + Number(it.smv).toFixed(2) : '', it.level!=='' ? 'Lv ' + it.level : '', it.inSmv ? '' : 'tidak ada di Data SMV' ].filter(Boolean).join(' · ');
+    const chips = it.ops.map(o=> `<span class="pl-chip ${o.active ? '' : 'inactive'}" title="${rdEsc(o.nip)}">${rdEsc(o.nama)}${o.active ? '' : ' ⚠ tidak aktif'}<button class="pl-x" aria-label="Hapus" data-action="rm" data-line="${encodeURIComponent(plotSel.line)}" data-style="${encodeURIComponent(plotSel.style)}" data-p="${encodeURIComponent(it.proses)}" data-nip="${encodeURIComponent(o.nip)}">×</button></span>`).join('');
+    return `<div class="pl-row ${empty ? 'empty' : ''}">
+      <div class="pl-proses">${rdEsc(it.proses)}${meta ? `<div class="pl-sub">${rdEsc(meta)}</div>` : ''}</div>
+      <div class="pl-ops">${chips}${empty && !it.ops.length ? '<span class="pl-sub">Belum ada operator</span>' : ''}<input class="pl-add" list="plotOpDL" placeholder="+ operator (NIP atau nama)" data-role="add" data-p="${encodeURIComponent(it.proses)}"></div>
+      <div class="pl-count">${it.ops.filter(o=> o.active).length}</div></div>`;
+  }).join('');
+  grid.innerHTML = `<div class="pl-grid"><div class="pl-row head"><span>Proses</span><span>Operator</span><span style="text-align:center;">Jumlah</span></div>${rows}</div>`;
+}
+function plotRenderNeeds(){
+  const list = plotNeedsFill();
+  plotEl('plotNeedsCount').textContent = list.length ? `(${list.reduce((a,x)=> a + x.items.length, 0)} proses di ${list.length} style)` : '';
+  plotEl('plotNeeds').innerHTML = list.length
+    ? list.map(x=> `<div class="pl-need"><div><b>${rdEsc(x.line)} · ${rdEsc(x.style)}</b><div class="pl-sub">${x.items.map(i=> rdEsc(i.proses) + ' (' + i.reason + ')').join(' · ')}</div></div>
+        <button class="small secondary" data-action="open" data-line="${encodeURIComponent(x.line)}" data-style="${encodeURIComponent(x.style)}">Buka</button></div>`).join('')
+    : '<div class="hint" style="padding:12px 16px;margin:0;">Tidak ada proses yang menunggu diisi di style yang sudah diplot.</div>';
+}
+function plotRenderCad(){
+  const q = plotNorm(plotEl('plotCadSearch').value);
+  const all = plotCadList();
+  let list = all;
+  if(q) list = all.filter(o=> plotNorm(o['NAMA']).includes(q) || plotNorm(o['NIP']).includes(q) || plotNorm(plotOpSkills(o)).includes(q));
+  plotEl('plotCadCount').textContent = `(${all.length} operator${q ? ', ' + list.length + ' cocok' : ''})`;
+  const ready = plotSel.line && plotSel.style;
+  const procs = ready ? plotProsesList(plotSel.style) : [];
+  const shown = list.slice(0, plotCadLimit);
+  const opts = '<option value="">Pilih proses</option>' + procs.map(p=> `<option value="${encodeURIComponent(p.proses)}">${rdEsc(p.proses)}</option>`).join('');
+  let html = shown.map(o=>
+    `<div class="pl-cad-row"><div>${rdEsc(o['NAMA'])}<div class="pl-sub">${rdEsc(o['NIP'])}${plotOpSkills(o) ? ' · ' + rdEsc(plotOpSkills(o)) : ''}</div></div>
+      ${ready ? `<select data-role="cad-proses" data-nip="${encodeURIComponent(o['NIP'])}">${opts}</select><button class="small" data-action="cad-plot" data-nip="${encodeURIComponent(o['NIP'])}">Plot</button>` : '<span class="pl-sub" style="grid-column:span 2;">Pilih Line dan Style di atas dulu</span>'}</div>`).join('');
+  if(list.length > shown.length) html += `<div class="pl-cad-row" style="grid-template-columns:1fr;"><button class="small secondary" data-action="cad-more">Tampilkan ${Math.min(40, list.length - shown.length)} lagi (${list.length - shown.length} tersisa)</button></div>`;
+  if(!list.length) html = `<div class="hint" style="padding:12px;margin:0;">${all.length ? 'Tidak ada yang cocok dengan pencarian.' : 'Semua operator aktif sudah diplot.'}</div>`;
+  plotEl('plotCad').innerHTML = html;
+}
+function plotDbModel(lineFilter, search){
+  const q = plotNorm(search);
+  const byLine = new Map();
+  plotPairs().forEach(p=>{
+    if(lineFilter && plotNorm(p.line)!==plotNorm(lineFilter)) return;
+    const st = plotPairStats(p.line, p.style);
+    if(q){
+      const hit = plotNorm(p.style).includes(q) || st.items.some(it=> plotNorm(it.proses).includes(q) || it.ops.some(o=> plotNorm(o.nama).includes(q) || plotNorm(o.nip).includes(q)));
+      if(!hit) return;
+    }
+    if(!byLine.has(p.line)) byLine.set(p.line, []);
+    byLine.get(p.line).push({ style: p.style, st });
+  });
+  return [...byLine.entries()].sort((a,b)=> plotNat(a[0], b[0])).map(([line, styles])=>{
+    const nips = new Set();
+    styles.forEach(s=> s.st.items.forEach(it=> it.ops.forEach(o=>{ if(o.active) nips.add(plotNorm(o.nip)); })));
+    styles.sort((a,b)=> plotNat(a.style, b.style));
+    styles.forEach(s=> s.st.items.sort((a,b)=> plotNat(a.proses, b.proses)));
+    return { line, operatorsUnik: nips.size, styles };
+  });
+}
+function plotRenderDb(){
+  const sel = plotEl('plotDbLine');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">Semua line</option>' + PLOT_LINES.map(l=> `<option value="${rdEsc(l)}">${rdEsc(l)}</option>`).join('');
+  sel.value = prev || '';
+  const model = plotDbModel(sel.value, plotEl('plotDbSearch').value);
+  if(!model.length){
+    plotEl('plotDb').innerHTML = '<div class="hint">' + (plotRows.length ? 'Tidak ada plotting yang cocok dengan filter.' : 'Belum ada plotting. Mulai dari bagian Plot per style di atas.') + '</div>';
+    return;
+  }
+  plotEl('plotDb').innerHTML = model.map(g=> `
+    <div class="rd-line">
+      <div class="rd-line-head"><span class="rd-line-name">${rdEsc(g.line)}</span>
+        <span class="lh-chip"><b>${g.styles.length}</b> style</span><span class="lh-chip"><b>${g.operatorsUnik}</b> operator unik</span></div>
+      <div class="rd-line-body">${g.styles.map(s=> `
+        <div class="pl-style-head">${rdEsc(s.style)}
+          <span class="lh-chip"><b>${s.st.operatorsUnik}</b> operator unik</span>
+          <span class="lh-chip"><b>${s.st.posisi}</b> posisi proses</span>
+          <span class="lh-chip" style="${s.st.kosong ? 'color:var(--warn);' : ''}"><b>${s.st.kosong}</b> proses kosong</span></div>
+        <div style="overflow-x:auto;"><table class="pl-table"><thead><tr><th>Proses</th><th>Operator</th><th style="text-align:center;">Jumlah</th></tr></thead><tbody>
+          ${s.st.items.map(it=> `<tr><td>${rdEsc(it.proses)}</td><td>${it.ops.length ? it.ops.map(o=> `<span class="pl-chip ${o.active ? '' : 'inactive'}" style="padding-right:9px;">${rdEsc(o.nama)}${o.active ? '' : ' ⚠ tidak aktif'}</span>`).join(' ') : '<span class="pl-sub">kosong</span>'}</td><td style="text-align:center;">${it.ops.filter(o=> o.active).length}</td></tr>`).join('')}
+        </tbody></table></div>`).join('')}</div>
+    </div>`).join('');
+}
+
+/* --- penanganan klik/ubah (satu penangkap untuk seluruh tab) --- */
+function plotOnClick(e){
+  const b = e.target && e.target.closest ? e.target.closest('[data-action]') : null;
+  if(!b) return;
+  const d = b.dataset, dec = v=> decodeURIComponent(v || '');
+  switch(d.action){
+    case 'rm': plotRemoveOperator(dec(d.line), dec(d.style), dec(d.p), dec(d.nip)); break;
+    case 'open': plotOpenPair(dec(d.line), dec(d.style)); break;
+    case 'move-confirm': plotConfirmMove(); break;
+    case 'move-cancel': plotMove = null; renderPlotting(); break;
+    case 'dismiss-vacated': plotVacated = []; renderPlotting(); break;
+    case 'retry': plotSyncNow(); break;
+    case 'cad-more': plotCadLimit += 40; plotRenderCad(); break;
+    case 'cad-plot': {
+      const nip = dec(d.nip);
+      const row = b.parentNode;
+      const selEl = row && row.querySelector ? row.querySelector('select[data-role="cad-proses"]') : null;
+      const proses = selEl ? dec(selEl.value) : '';
+      if(!proses){ plotMsg('Pilih proses dulu untuk operator ini.'); break; }
+      plotTryAdd(nip, proses);
+      break;
+    }
+  }
+}
+function plotOnChange(e){
+  const t = e.target;
+  if(!t || !t.dataset) return;
+  if(t.dataset.role === 'add'){
+    const proses = decodeURIComponent(t.dataset.p || '');
+    const val = t.value;
+    t.value = '';
+    if(String(val||'').trim()) plotTryAdd(val, proses);
+  }
+}
+function wirePlottingEvents(){
+  const tab = plotEl('tab-plotting');
+  tab.addEventListener('click', plotOnClick);
+  tab.addEventListener('change', plotOnChange);
+  plotEl('plotLine').addEventListener('change', ()=>{
+    plotSel.line = plotEl('plotLine').value;
+    plotMove = null;
+    plotPersist(); renderPlotting();
+  });
+  plotEl('plotStyle').addEventListener('change', ()=>{
+    const raw = plotEl('plotStyle').value;
+    const s = plotResolveStyle(raw);
+    if(raw.trim() && !s){ plotMsg('Style tidak ditemukan di Data SMV: ' + raw.trim()); return; }
+    plotMsg('');
+    plotSel.style = s;
+    plotMove = null;
+    plotPersist(); renderPlotting();
+  });
+  plotEl('plotRefreshBtn').addEventListener('click', async ()=>{ plotMsg('Memuat...'); await plotPull(); plotMsg(''); renderPlotting(); });
+  plotEl('plotDeletePairBtn').addEventListener('click', plotDeletePair);
+  // Simpan otomatis tetap jalan; tombol ini memaksa kirim sekarang tanpa menunggu jeda 1 detik
+  plotEl('plotSaveNowBtn').addEventListener('click', async ()=>{
+    clearTimeout(plotSyncTimer);
+    if(!plotPending.adds.length && !plotPending.dels.length){
+      plotMsg('Tidak ada perubahan yang menunggu disimpan.');
+      plotSetStatus('ok');
+      return;
+    }
+    plotMsg('');
+    await plotSyncNow();
+  });
+  plotEl('plotCadSearch').addEventListener('input', ()=>{ plotCadLimit = 40; plotRenderCad(); });
+  plotEl('plotDbLine').addEventListener('change', plotRenderDb);
+  plotEl('plotDbSearch').addEventListener('input', plotRenderDb);
+}
+wirePlottingEvents();
+
+async function initPlottingTab(){
+  if(!plotInited){
+    plotInited = true;
+    plotRows = (await storeGet('kap_plotRows', true)) || [];
+    plotPending = (await storeGet('kap_plotPending', true)) || { adds: [], dels: [] };
+    plotSel = (await storeGet('kap_plotSel', true)) || { line: '', style: '' };
+    setInterval(()=>{ if(config.gasUrl && !plotSyncing && (plotPending.adds.length || plotPending.dels.length)) plotSyncNow(); }, 60*1000);
+    renderPlotting();
+    plotSetStatus((plotPending.adds.length || plotPending.dels.length) ? 'wait' : 'ok');
+    await plotPull();
+    renderPlotting();
+  }else{
+    renderPlotting();
+  }
+}
 
 /* ---------- Persist tampilan terakhir (tab, tanggal, line, pencarian) ---------- */
 function getActiveTab(){
