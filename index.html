@@ -148,6 +148,11 @@
   .pl-table th{text-align:left;color:var(--text-dim);font-weight:600;padding:4px 6px;border-bottom:1px solid var(--border);}
   .pl-table td{padding:5px 6px;border-bottom:1px solid var(--border);vertical-align:top;}
   .pl-style-head{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:baseline;margin:10px 0 4px;font-size:13px;font-weight:700;}
+  .pl-line > summary{cursor:pointer;list-style:none;user-select:none;}
+  .pl-line > summary::-webkit-details-marker{display:none;}
+  .pl-line > summary::before{content:"▸";color:var(--text-dim);margin-right:2px;}
+  .pl-line[open] > summary::before{content:"▾";}
+  .pl-line:not([open]) > summary{border-bottom:none;}
 
   .eff-good{background:rgba(62,207,142,.15);color:var(--good);}
   .eff-warn{background:rgba(224,167,46,.15);color:var(--warn);}
@@ -726,7 +731,7 @@
       <div class="panel-title">Belum diplot (CAD) <span id="plotCadCount" style="text-transform:none;font-weight:400;"></span></div>
       <div class="panel-body">
         <div class="row" style="margin-bottom:6px;"><div class="field" style="min-width:240px;"><input id="plotCadSearch" placeholder="Cari nama, NIP, atau skill"></div></div>
-        <div class="hint" style="margin-top:0;margin-bottom:8px;">Pilih Line dan Style di atas, lalu pilih proses untuk tiap operator dan tekan Plot.</div>
+        <div class="hint" style="margin-top:0;margin-bottom:8px;">Operator yang belum diplot otomatis dianggap CAD. Pilih Line dan Style di atas, lalu pilih proses untuk tiap operator dan tekan Plot. Untuk CAD, SKILL UP, atau REPAIR cukup pilih Line-nya.</div>
         <div id="plotCad" class="pl-grid"></div>
       </div>
     </div>
@@ -789,7 +794,9 @@
 </div>
 
 <script>
-const LINES = ['A01','F01','F02','F03','F04','F05','F06','F07','F08','S-F08','F09','F10','F11','F12','F13','F14','S-F14','CAD','K08','K09','K49','REPAIR'];
+const LINES = ['A01','F01','F02','F03','F04','F05','F06','F07','F08','S-F08','F09','F10','F11','F12','F13','F14','S-F14','CAD','K08','K09','K49','SKILL UP','REPAIR'];
+// Line non-produksi: boleh tanpa Style/Proses, dan operator di sana dianggap tersedia
+const LINES_SPECIAL = ['CAD','SKILL UP','REPAIR'];
 
 let config = { gasUrl: 'https://script.google.com/macros/s/AKfycbyw1MOpplaAnsKI-6BsDg-malslfRkgxRLZKNTlgl2J7agaophG5wAOxY_EgAz7jFpePw/exec' };
 let dataOpt = [];      // {NIP, NAMA, ...}
@@ -970,9 +977,9 @@ async function doSyncNow(evtOrMsgElId){
     // PENTING: hanya kirim baris yang benar-benar berubah sejak sinkron terakhir
     // (synced === false), supaya perangkat lain yang belum menarik data terbaru
     // tidak menimpa balik data yang sudah diubah perangkat lain.
-    // Pengecualian: Line CAD dan REPAIR boleh sync walau Style/Proses masih kosong,
+    // Pengecualian: Line CAD, SKILL UP, dan REPAIR boleh sync walau Style/Proses masih kosong,
     // asal Line-nya sudah terisi (line-line lain tetap wajib Style+Proses lengkap).
-    const LINES_ALLOW_EMPTY_STYLE_PROSES = ['CAD', 'REPAIR'];
+    const LINES_ALLOW_EMPTY_STYLE_PROSES = LINES_SPECIAL;
     const assignRows = assignments
       .filter(a => !a.synced && a.line && (
         (a.style && a.proses) || LINES_ALLOW_EMPTY_STYLE_PROSES.includes(a.line)
@@ -1079,7 +1086,7 @@ function prosesDatalistFor(id, style){
 }
 
 /* ---------- Assignment tab ---------- */
-const LINES_ALLOW_EMPTY_STYLE_PROSES_FOR_ASSIGNED = ['CAD', 'REPAIR'];
+const LINES_ALLOW_EMPTY_STYLE_PROSES_FOR_ASSIGNED = LINES_SPECIAL;
 function isAssignComplete(a){
   return (a.style && a.proses) || (a.line && LINES_ALLOW_EMPTY_STYLE_PROSES_FOR_ASSIGNED.includes(a.line));
 }
@@ -3143,7 +3150,7 @@ async function initWipTab(){
   msg.textContent = `${rows.length} baris ditemukan.`;
 
   if(!wipTabInited){
-    const lineOptions = [...new Set(rows.map(r=>r['LINE']).filter(Boolean))].sort();
+    const lineOptions = lineOptionsUnion(rows.map(r=>r['LINE']));
     wipLineMS = createMultiSelect('wipLineMS', 'Line', lineOptions);
     wipTabInited = true;
   }
@@ -3264,7 +3271,7 @@ let skillProsesMS = null;
 let skillOperatorMS = null;
 let skillTabInited = false;
 const SKILL_FIELDS = ['JOB SPESIFIC','SKILL 1','SKILL 2','SKILL 3'];
-const AVAILABLE_LINES_EXCEPTION = ['CAD','REPAIR'];
+const AVAILABLE_LINES_EXCEPTION = LINES_SPECIAL;
 
 function initSkillTab(){
   const dateInput = document.getElementById('skillDate');
@@ -3955,6 +3962,13 @@ function constructionSummaryHtml(res, isOpen){
     <div class="cs-note" style="margin-top:6px;">Hanya line aktif yang dihitung. Sebuah line dihitung untuk suatu konstruksi kalau pernah mengerjakan minimal satu style dengan konstruksi itu di seluruh histori line tersebut. Persentase = jumlah line dibagi ${res.activeCount} line aktif; satu line bisa masuk lebih dari satu nilai dalam atribut yang sama.</div>
     <div class="cs-grid">${cards}</div></details>`;
 }
+// Pilihan filter Line berbasis data: SEMUA line dari daftar utama (walau belum ada datanya), lalu line lain yang
+// muncul di data tetapi tidak ada di daftar utama.
+function lineOptionsUnion(dataLines){
+  const base = (typeof LINES !== 'undefined') ? LINES : [];
+  const extra = [...new Set((dataLines||[]).filter(Boolean))].filter(l=> !base.includes(l)).sort((a,b)=> String(a).localeCompare(String(b),'id',{numeric:true}));
+  return base.concat(extra);
+}
 /* ---------- /Helper tag Output ---------- */
 
 /* ---------- Tab: Running Days per Line ---------- */
@@ -3995,7 +4009,7 @@ async function loadRunningDays(month){
 }
 
 function setupRunningFilters(){
-  const lines = rdData.lines.map(l=>l.line);
+  const lines = lineOptionsUnion(rdData.lines.map(l=>l.line));
   const styleSet = new Set();
   rdData.lines.forEach(l=> l.segments.forEach(s=> styleSet.add(s.group)));
   const styles = [...styleSet].sort((a,b)=> a.localeCompare(b,'id'));
@@ -4166,7 +4180,7 @@ async function loadLineHistory(){
 }
 
 function setupLineHistoryFilters(){
-  const lines = lhData.lines.map(l=>l.line);
+  const lines = lineOptionsUnion(lhData.lines.map(l=>l.line));
   const styleSet = new Set();
   lhData.lines.forEach(l=> lhVisibleStyles(l).forEach(s=> styleSet.add(s.group)));
   const styles = [...styleSet].sort((a,b)=> a.localeCompare(b,'id'));
@@ -4332,7 +4346,10 @@ document.querySelectorAll('#sidebarNav button').forEach(btn=>{
 });
 
 /* ---------- Tab: Plotting Default (database default operator per line per style) ---------- */
-const PLOT_LINES = LINES.filter(l=> l !== 'CAD' && l !== 'REPAIR');
+const PLOT_LINES = LINES.slice();
+// Line khusus (CAD, SKILL UP, REPAIR): plotting hanya daftar operator di line itu, tanpa style dan proses
+function plotIsSpecialLine(line){ return LINES_SPECIAL.includes(String(line||'').replace(/\s+/g,' ').trim().toUpperCase()); }
+function plotPosLabel(p){ return p.style ? `${p.line} · ${p.style} · ${p.proses}` : p.line; }
 let plotRows = [];                          // {line, style, proses, nip, nama, diubah}; nip kosong = slot kosong (pengingat)
 let plotPending = { adds: [], dels: [] };   // perubahan yang belum dikonfirmasi server
 let plotInFlight = { adds: [], dels: [] };  // bagian dari plotPending yang sedang dikirim
@@ -4394,6 +4411,7 @@ function plotRemoveRow(r){
   const gone = plotRows.splice(idx,1)[0];
   plotQueueDel(gone);
   if(plotIsSlot(gone)) return false;
+  if(plotIsSpecialLine(gone.line)) return false;   // line khusus tidak punya proses: tidak ada slot pengingat
   if(plotRows.some(x=> !plotIsSlot(x) && plotSamePos(x, gone))) return false;
   const slot = { line: gone.line, style: gone.style, proses: gone.proses, nip: '', nama: '', diubah: plotNowStamp() };
   if(!plotRows.some(x=> plotKeyOf(x)===plotKeyOf(slot))){ plotRows.push(slot); plotQueueAdd(slot); }
@@ -4452,10 +4470,24 @@ function plotRowsFor(line, style){
 function plotPairs(){
   const m = new Map();
   plotRows.forEach(r=>{
+    if(plotIsSpecialLine(r.line)) return;   // line khusus ditangani terpisah
     const k = plotNorm(r.line) + '||' + plotNorm(r.style);
     if(!m.has(k)) m.set(k, { line: r.line, style: r.style });
   });
   return [...m.values()].sort((a,b)=> plotNat(a.line,b.line) || plotNat(a.style,b.style));
+}
+function plotSpecialRows(line){ return plotRows.filter(r=> !plotIsSlot(r) && plotNorm(r.line)===plotNorm(line)); }
+function plotSpecialStats(line){
+  const ops = plotSpecialRows(line).map(r=>{
+    const op = plotActiveOp(r.nip);
+    return { nip: r.nip, nama: op ? op['NAMA'] : (r.nama || r.nip), active: !!op };
+  }).sort((a,b)=> plotNat(a.nama, b.nama));
+  return { ops, active: ops.filter(o=> o.active).length, inactive: ops.filter(o=> !o.active).length };
+}
+function plotSpecialLines(){
+  const m = new Map();
+  plotRows.forEach(r=>{ if(!plotIsSlot(r) && plotIsSpecialLine(r.line) && !m.has(plotNorm(r.line))) m.set(plotNorm(r.line), r.line); });
+  return [...m.values()];
 }
 // Per proses (urutan Data SMV): operator di dalamnya. Hanya operator AKTIF yang dihitung.
 function plotPairStats(line, style){
@@ -4599,23 +4631,26 @@ function plotAfterChange(){
 
 /* --- aksi pengguna --- */
 function plotTryAdd(inputValue, proses){
-  const line = plotSel.line, style = plotSel.style;
-  if(!line || !style){ plotMsg('Pilih Line dan Style dulu.'); return; }
+  const line = plotSel.line;
+  const special = plotIsSpecialLine(line);
+  const style = special ? '' : plotSel.style;
+  const pr = special ? '' : proses;
+  if(!line || (!special && !style)){ plotMsg('Pilih Line dan Style dulu.'); return; }
   const op = plotResolveOperator(inputValue);
   if(!op){ plotMsg('Operator tidak ditemukan di daftar operator aktif: ' + String(inputValue||'').trim()); return; }
   const nip = op['NIP'], nama = op['NAMA'];
-  if(plotRows.some(r=> !plotIsSlot(r) && plotSamePos(r, { line, style, proses }) && plotNorm(r.nip)===plotNorm(nip))){
-    plotMsg(`${nama} sudah ada di proses ${proses}.`); return;
+  if(plotRows.some(r=> !plotIsSlot(r) && plotSamePos(r, { line, style, proses: pr }) && plotNorm(r.nip)===plotNorm(nip))){
+    plotMsg(special ? `${nama} sudah ada di ${line}.` : `${nama} sudah ada di proses ${pr}.`); return;
   }
   const elsewhere = plotRows.filter(r=> !plotIsSlot(r) && plotNorm(r.nip)===plotNorm(nip) && plotNorm(r.line)!==plotNorm(line));
   if(elsewhere.length){
-    plotMove = { nip, nama, line, style, proses, elsewhere: elsewhere.map(r=> ({ line: r.line, style: r.style, proses: r.proses })) };
+    plotMove = { nip, nama, line, style, proses: pr, elsewhere: elsewhere.map(r=> ({ line: r.line, style: r.style, proses: r.proses })) };
     plotMsg('');
     renderPlotting();
     return;
   }
   plotMsg('');
-  plotAddRow(line, style, proses, nip, nama);
+  plotAddRow(line, style, pr, nip, nama);
   plotAfterChange();
 }
 function plotConfirmMove(){
@@ -4636,6 +4671,7 @@ function plotRemoveOperator(line, style, proses, nip){
 }
 function plotDeletePair(){
   const line = plotSel.line, style = plotSel.style;
+  if(plotIsSpecialLine(line)){ plotMsg('Line ini tidak memakai style. Hapus operatornya satu per satu dengan tanda x.'); return; }
   if(!line || !style){ plotMsg('Pilih Line dan Style dulu.'); return; }
   const rows = plotRowsFor(line, style);
   if(!rows.length){ plotMsg('Belum ada plotting untuk style ini di line ini.'); return; }
@@ -4675,7 +4711,11 @@ function renderPlotting(){
   const lineSel = plotEl('plotLine');
   lineSel.innerHTML = '<option value="">Pilih line</option>' + PLOT_LINES.map(l=> `<option value="${rdEsc(l)}">${rdEsc(l)}</option>`).join('');
   lineSel.value = plotSel.line || '';
-  plotEl('plotStyle').value = plotSel.style || '';
+  const specialSel = plotIsSpecialLine(plotSel.line);
+  plotEl('plotStyle').value = specialSel ? '' : (plotSel.style || '');
+  plotEl('plotStyle').disabled = specialSel;
+  plotEl('plotStyle').placeholder = specialSel ? 'Line ini tidak memakai style' : 'Ketik atau pilih style';
+  plotEl('plotDeletePairBtn').disabled = specialSel;
 
   plotRenderChips();
   plotRenderBanner();
@@ -4686,7 +4726,7 @@ function renderPlotting(){
 }
 function plotRenderChips(){
   const box = plotEl('plotStyleChips');
-  if(!plotSel.line){ box.innerHTML = ''; return; }
+  if(!plotSel.line || plotIsSpecialLine(plotSel.line)){ box.innerHTML = ''; return; }
   const chips = plotPairs().filter(p=> plotNorm(p.line)===plotNorm(plotSel.line)).map(p=>{
     const st = plotPairStats(p.line, p.style);
     const on = plotNorm(p.style)===plotNorm(plotSel.style);
@@ -4701,7 +4741,7 @@ function plotRenderBanner(){
   if(plotMove){
     const m = plotMove;
     html += `<div class="pl-banner">⚠ <b>${rdEsc(m.nama)}</b> (${rdEsc(m.nip)}) sudah diplot di line lain. Ubah plot di line itu dulu supaya tidak ganda:
-      <ul>${m.elsewhere.map(e=> `<li>${rdEsc(e.line)} · ${rdEsc(e.style)} · ${rdEsc(e.proses)}</li>`).join('')}</ul>
+      <ul>${m.elsewhere.map(e=> `<li>${rdEsc(plotPosLabel(e))}</li>`).join('')}</ul>
       <div class="pl-btns"><button class="small" data-action="move-confirm">Hapus dari plot lama dan tambahkan di sini</button><button class="small secondary" data-action="move-cancel">Batal</button></div></div>`;
   }
   if(plotVacated.length){
@@ -4713,6 +4753,23 @@ function plotRenderBanner(){
 }
 function plotRenderGrid(noRef){
   const statsBox = plotEl('plotStats'), grid = plotEl('plotGrid');
+  if(plotIsSpecialLine(plotSel.line)){
+    if(!dataOpt.length){
+      statsBox.innerHTML = '';
+      grid.innerHTML = '<div class="hint">Data operator belum dimuat. Buka tab Pengaturan, pastikan URL Apps Script benar, lalu muat ulang.</div>';
+      return;
+    }
+    const sp = plotSpecialStats(plotSel.line);
+    statsBox.innerHTML = `
+      <div class="rd-stat"><div class="rd-stat-val">${sp.active}</div><div class="rd-stat-lbl">Operator di ${rdEsc(plotSel.line)}</div></div>
+      ${sp.inactive ? `<div class="rd-stat" style="border-color:var(--bad);"><div class="rd-stat-val">${sp.inactive}</div><div class="rd-stat-lbl">Operator tidak aktif</div></div>` : ''}`;
+    const chips = sp.ops.map(o=> `<span class="pl-chip ${o.active ? '' : 'inactive'}" title="${rdEsc(o.nip)}">${rdEsc(o.nama)}${o.active ? '' : ' ⚠ tidak aktif'}<button class="pl-x" aria-label="Hapus" data-action="rm" data-line="${encodeURIComponent(plotSel.line)}" data-style="" data-p="" data-nip="${encodeURIComponent(o.nip)}">×</button></span>`).join('');
+    grid.innerHTML = `<div class="pl-grid"><div class="pl-row head"><span>Line</span><span>Operator</span><span style="text-align:center;">Jumlah</span></div>
+      <div class="pl-row ${sp.active ? '' : 'empty'}"><div class="pl-proses">${rdEsc(plotSel.line)}<div class="pl-sub">Tanpa style dan proses</div></div>
+        <div class="pl-ops">${chips}${sp.ops.length ? '' : '<span class="pl-sub">Belum ada operator</span>'}<input class="pl-add" list="plotOpDL" placeholder="+ operator (NIP atau nama)" data-role="add" data-p=""></div>
+        <div class="pl-count">${sp.active}</div></div></div>`;
+    return;
+  }
   if(noRef){
     statsBox.innerHTML = '';
     grid.innerHTML = '<div class="hint">Data operator atau Data SMV belum dimuat. Buka tab Pengaturan, pastikan URL Apps Script benar, lalu muat ulang.</div>';
@@ -4760,52 +4817,86 @@ function plotRenderCad(){
   let list = all;
   if(q) list = all.filter(o=> plotNorm(o['NAMA']).includes(q) || plotNorm(o['NIP']).includes(q) || plotNorm(plotOpSkills(o)).includes(q));
   plotEl('plotCadCount').textContent = `(${all.length} operator${q ? ', ' + list.length + ' cocok' : ''})`;
-  const ready = plotSel.line && plotSel.style;
-  const procs = ready ? plotProsesList(plotSel.style) : [];
+  const specialTarget = plotIsSpecialLine(plotSel.line);
+  const ready = plotSel.line && (specialTarget || plotSel.style);
+  const procs = ready && !specialTarget ? plotProsesList(plotSel.style) : [];
   const shown = list.slice(0, plotCadLimit);
   const opts = '<option value="">Pilih proses</option>' + procs.map(p=> `<option value="${encodeURIComponent(p.proses)}">${rdEsc(p.proses)}</option>`).join('');
   let html = shown.map(o=>
     `<div class="pl-cad-row"><div>${rdEsc(o['NAMA'])}<div class="pl-sub">${rdEsc(o['NIP'])}${plotOpSkills(o) ? ' · ' + rdEsc(plotOpSkills(o)) : ''}</div></div>
-      ${ready ? `<select data-role="cad-proses" data-nip="${encodeURIComponent(o['NIP'])}">${opts}</select><button class="small" data-action="cad-plot" data-nip="${encodeURIComponent(o['NIP'])}">Plot</button>` : '<span class="pl-sub" style="grid-column:span 2;">Pilih Line dan Style di atas dulu</span>'}</div>`).join('');
+      ${ready && specialTarget ? `<span class="pl-sub">tanpa style dan proses</span><button class="small" data-action="cad-plot" data-nip="${encodeURIComponent(o['NIP'])}">Plot</button>` : ready ? `<select data-role="cad-proses" data-nip="${encodeURIComponent(o['NIP'])}">${opts}</select><button class="small" data-action="cad-plot" data-nip="${encodeURIComponent(o['NIP'])}">Plot</button>` : '<span class="pl-sub" style="grid-column:span 2;">Pilih Line dan Style di atas dulu</span>'}</div>`).join('');
   if(list.length > shown.length) html += `<div class="pl-cad-row" style="grid-template-columns:1fr;"><button class="small secondary" data-action="cad-more">Tampilkan ${Math.min(40, list.length - shown.length)} lagi (${list.length - shown.length} tersisa)</button></div>`;
   if(!list.length) html = `<div class="hint" style="padding:12px;margin:0;">${all.length ? 'Tidak ada yang cocok dengan pencarian.' : 'Semua operator aktif sudah diplot.'}</div>`;
   plotEl('plotCad').innerHTML = html;
 }
+let plotDbOpen = new Set();   // line yang dibuka pengguna (diingat selama halaman dipakai); default semua tertutup
 function plotDbModel(lineFilter, search){
   const q = plotNorm(search);
-  const byLine = new Map();
+  const all = new Map(), shown = new Map();
   plotPairs().forEach(p=>{
     if(lineFilter && plotNorm(p.line)!==plotNorm(lineFilter)) return;
     const st = plotPairStats(p.line, p.style);
+    if(!all.has(p.line)) all.set(p.line, []);
+    all.get(p.line).push({ style: p.style, st });
     if(q){
       const hit = plotNorm(p.style).includes(q) || st.items.some(it=> plotNorm(it.proses).includes(q) || it.ops.some(o=> plotNorm(o.nama).includes(q) || plotNorm(o.nip).includes(q)));
       if(!hit) return;
     }
-    if(!byLine.has(p.line)) byLine.set(p.line, []);
-    byLine.get(p.line).push({ style: p.style, st });
+    if(!shown.has(p.line)) shown.set(p.line, []);
+    shown.get(p.line).push({ style: p.style, st });
   });
-  return [...byLine.entries()].sort((a,b)=> plotNat(a[0], b[0])).map(([line, styles])=>{
+  const groups = [...shown.entries()].map(([line, styles])=>{
+    // Ringkasan di judul line selalu dari SELURUH style line itu (pencarian hanya menyaring isi yang ditampilkan)
+    const full = all.get(line).slice().sort((a,b)=> plotNat(a.style, b.style));
     const nips = new Set();
-    styles.forEach(s=> s.st.items.forEach(it=> it.ops.forEach(o=>{ if(o.active) nips.add(plotNorm(o.nip)); })));
+    full.forEach(s=> s.st.items.forEach(it=> it.ops.forEach(o=>{ if(o.active) nips.add(plotNorm(o.nip)); })));
+    let best = 0;
+    full.forEach(s=>{ if(s.st.operatorsUnik > best) best = s.st.operatorsUnik; });
+    const top = { count: best, styles: best > 0 ? full.filter(s=> s.st.operatorsUnik === best).map(s=> s.style) : [] };
     styles.sort((a,b)=> plotNat(a.style, b.style));
     styles.forEach(s=> s.st.items.sort((a,b)=> plotNat(a.proses, b.proses)));
-    return { line, operatorsUnik: nips.size, styles };
+    return { line, operatorsUnik: nips.size, styleCount: full.length, top, styles };
   });
+  // Line khusus (CAD, SKILL UP, REPAIR): hanya daftar operator
+  plotSpecialLines().forEach(line=>{
+    if(lineFilter && plotNorm(line)!==plotNorm(lineFilter)) return;
+    const sp = plotSpecialStats(line);
+    if(q && !(plotNorm(line).includes(q) || sp.ops.some(o=> plotNorm(o.nama).includes(q) || plotNorm(o.nip).includes(q)))) return;
+    groups.push({ line, special: true, operatorsUnik: sp.active, inactive: sp.inactive, ops: sp.ops, styleCount: 0, top: { count: 0, styles: [] }, styles: [] });
+  });
+  return groups.sort((a,b)=> plotNat(a.line, b.line));
 }
 function plotRenderDb(){
   const sel = plotEl('plotDbLine');
   const prev = sel.value;
   sel.innerHTML = '<option value="">Semua line</option>' + PLOT_LINES.map(l=> `<option value="${rdEsc(l)}">${rdEsc(l)}</option>`).join('');
   sel.value = prev || '';
-  const model = plotDbModel(sel.value, plotEl('plotDbSearch').value);
+  const search = plotEl('plotDbSearch').value;
+  const searching = !!plotNorm(search);
+  const model = plotDbModel(sel.value, search);
   if(!model.length){
     plotEl('plotDb').innerHTML = '<div class="hint">' + (plotRows.length ? 'Tidak ada plotting yang cocok dengan filter.' : 'Belum ada plotting. Mulai dari bagian Plot per style di atas.') + '</div>';
     return;
   }
-  plotEl('plotDb').innerHTML = model.map(g=> `
-    <div class="rd-line">
-      <div class="rd-line-head"><span class="rd-line-name">${rdEsc(g.line)}</span>
-        <span class="lh-chip"><b>${g.styles.length}</b> style</span><span class="lh-chip"><b>${g.operatorsUnik}</b> operator unik</span></div>
+  plotEl('plotDb').innerHTML = model.map(g=>{
+    // Saat mencari, line yang cocok otomatis terbuka (tanpa mengubah pilihan buka/tutup pengguna)
+    const isOpen = searching || plotDbOpen.has(g.line);
+    if(g.special){
+      const chips = g.ops.map(o=> `<span class="pl-chip ${o.active ? '' : 'inactive'}" style="padding-right:9px;" title="${rdEsc(o.nip)}">${rdEsc(o.nama)}${o.active ? '' : ' ⚠ tidak aktif'}</span>`).join(' ');
+      return `
+    <details class="rd-line pl-line"${isOpen ? ' open' : ''}>
+      <summary class="rd-line-head" data-action="db-toggle" data-line="${encodeURIComponent(g.line)}"><span class="rd-line-name">${rdEsc(g.line)}</span>
+        <span class="lh-chip"><b>${g.operatorsUnik}</b> operator</span>${g.inactive ? `<span class="lh-chip" style="color:var(--bad);"><b>${g.inactive}</b> tidak aktif</span>` : ''}<span class="lh-chip">Tanpa style dan proses</span></summary>
+      <div class="rd-line-body"><div class="pl-ops">${chips || '<span class="pl-sub">kosong</span>'}</div></div>
+    </details>`;
+    }
+    const topHtml = g.top.styles.length
+      ? `<span class="lh-chip" title="Style dengan operator unik terbanyak di line ini">Terbanyak: <b>${g.top.styles.map(s=> rdEsc(s)).join(', ')}</b> · <b>${g.top.count}</b> operator</span>`
+      : '<span class="lh-chip">Belum ada operator aktif</span>';
+    return `
+    <details class="rd-line pl-line"${isOpen ? ' open' : ''}>
+      <summary class="rd-line-head" data-action="db-toggle" data-line="${encodeURIComponent(g.line)}"><span class="rd-line-name">${rdEsc(g.line)}</span>
+        <span class="lh-chip"><b>${g.styleCount}</b> style</span><span class="lh-chip"><b>${g.operatorsUnik}</b> operator unik</span>${topHtml}</summary>
       <div class="rd-line-body">${g.styles.map(s=> `
         <div class="pl-style-head">${rdEsc(s.style)}
           <span class="lh-chip"><b>${s.st.operatorsUnik}</b> operator unik</span>
@@ -4814,7 +4905,8 @@ function plotRenderDb(){
         <div style="overflow-x:auto;"><table class="pl-table"><thead><tr><th>Proses</th><th>Operator</th><th style="text-align:center;">Jumlah</th></tr></thead><tbody>
           ${s.st.items.map(it=> `<tr><td>${rdEsc(it.proses)}</td><td>${it.ops.length ? it.ops.map(o=> `<span class="pl-chip ${o.active ? '' : 'inactive'}" style="padding-right:9px;">${rdEsc(o.nama)}${o.active ? '' : ' ⚠ tidak aktif'}</span>`).join(' ') : '<span class="pl-sub">kosong</span>'}</td><td style="text-align:center;">${it.ops.filter(o=> o.active).length}</td></tr>`).join('')}
         </tbody></table></div>`).join('')}</div>
-    </div>`).join('');
+    </details>`;
+  }).join('');
 }
 
 /* --- penanganan klik/ubah (satu penangkap untuk seluruh tab) --- */
@@ -4829,13 +4921,20 @@ function plotOnClick(e){
     case 'move-cancel': plotMove = null; renderPlotting(); break;
     case 'dismiss-vacated': plotVacated = []; renderPlotting(); break;
     case 'retry': plotSyncNow(); break;
+    case 'db-toggle': {
+      // Klik terjadi SEBELUM details berganti status, jadi .open masih status lama
+      const det = b.parentNode;
+      const key = dec(d.line);
+      if(det && det.open) plotDbOpen.delete(key); else plotDbOpen.add(key);
+      break;
+    }
     case 'cad-more': plotCadLimit += 40; plotRenderCad(); break;
     case 'cad-plot': {
       const nip = dec(d.nip);
       const row = b.parentNode;
       const selEl = row && row.querySelector ? row.querySelector('select[data-role="cad-proses"]') : null;
       const proses = selEl ? dec(selEl.value) : '';
-      if(!proses){ plotMsg('Pilih proses dulu untuk operator ini.'); break; }
+      if(!proses && !plotIsSpecialLine(plotSel.line)){ plotMsg('Pilih proses dulu untuk operator ini.'); break; }
       plotTryAdd(nip, proses);
       break;
     }
