@@ -4530,10 +4530,12 @@ async function doPlotSync(){
     plotPending.adds = plotPending.adds.filter(a=> !snapAdds.includes(a));
     plotPending.dels = plotPending.dels.filter(d=> !snapDels.includes(d));
     plotInFlight = { adds: [], dels: [] };
+    const sigBefore = plotSignature(plotRows);
     plotApplyServerRows(res.rows || []);
+    const contentChanged = sigBefore !== plotSignature(plotRows);
     plotLastError = '';
     plotSetStatus('ok');
-    renderPlotting();
+    if(contentChanged) plotRenderSafe();
     if(plotPending.adds.length || plotPending.dels.length) plotScheduleSync();
   }catch(e){
     plotInFlight = { adds: [], dels: [] };
@@ -4571,6 +4573,24 @@ async function plotPull(){
     plotSetStatus('error', plotLastError);
   }
 }
+let plotRenderPending = false;
+// Tanda tangan isi data (kunci baris saja, urutan dan waktu diabaikan): untuk tahu apakah isi yang tampil benar-benar berubah
+function plotSignature(rows){ return rows.map(plotKeyOf).sort().join('\n'); }
+// Pengguna sedang berada di kolom input / pilihan di tab ini (daftar nama operator mungkin sedang terbuka)
+function plotIsEditing(){
+  const a = document.activeElement;
+  const tab = plotEl('tab-plotting');
+  if(!a || !tab || !tab.contains || !tab.contains(a)) return false;
+  return a.tagName === 'INPUT' || a.tagName === 'SELECT' || a.tagName === 'TEXTAREA';
+}
+// Penggambaran ulang yang dipicu proses di latar belakang (simpan/muat) tidak boleh menutup daftar nama
+// operator yang sedang dipilih; ditunda sampai fokus meninggalkan kolom itu.
+function plotRenderSafe(){
+  if(plotIsEditing()){ plotRenderPending = true; return; }
+  plotRenderPending = false;
+  renderPlotting();
+}
+
 function plotAfterChange(){
   plotPersist();
   renderPlotting();
@@ -4835,6 +4855,9 @@ function wirePlottingEvents(){
   const tab = plotEl('tab-plotting');
   tab.addEventListener('click', plotOnClick);
   tab.addEventListener('change', plotOnChange);
+  tab.addEventListener('focusout', ()=>{
+    setTimeout(()=>{ if(plotRenderPending && !plotIsEditing()){ plotRenderPending = false; renderPlotting(); } }, 250);
+  });
   plotEl('plotLine').addEventListener('change', ()=>{
     plotSel.line = plotEl('plotLine').value;
     plotMove = null;
@@ -4849,7 +4872,7 @@ function wirePlottingEvents(){
     plotMove = null;
     plotPersist(); renderPlotting();
   });
-  plotEl('plotRefreshBtn').addEventListener('click', async ()=>{ plotMsg('Memuat...'); await plotPull(); plotMsg(''); renderPlotting(); });
+  plotEl('plotRefreshBtn').addEventListener('click', async ()=>{ plotMsg('Memuat...'); await plotPull(); plotMsg(''); plotRenderSafe(); });
   plotEl('plotDeletePairBtn').addEventListener('click', plotDeletePair);
   // Simpan otomatis tetap jalan; tombol ini memaksa kirim sekarang tanpa menunggu jeda 1 detik
   plotEl('plotSaveNowBtn').addEventListener('click', async ()=>{
@@ -4878,7 +4901,7 @@ async function initPlottingTab(){
     renderPlotting();
     plotSetStatus((plotPending.adds.length || plotPending.dels.length) ? 'wait' : 'ok');
     await plotPull();
-    renderPlotting();
+    plotRenderSafe();
   }else{
     renderPlotting();
   }
