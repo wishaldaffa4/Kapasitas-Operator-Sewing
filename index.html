@@ -122,6 +122,7 @@
   .cs-table th{text-align:left;color:var(--text-dim);font-weight:600;padding:4px 6px;border-bottom:1px solid var(--border);}
   .cs-table td{padding:4px 6px;border-bottom:1px solid var(--border);vertical-align:top;}
   .cs-note{font-size:11px;color:var(--text-dim);margin-top:6px;line-height:1.5;}
+  select.k-pic{min-width:190px;font-size:12px;padding:4px 6px;}
   /* ---------- Tab Plotting Default ---------- */
   .pl-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:12px 0;}
   .pl-banner{border-radius:8px;padding:10px 12px;margin:10px 0;font-size:12.5px;line-height:1.5;background:rgba(224,167,46,.12);border:1px solid var(--warn);color:var(--text);}
@@ -776,7 +777,7 @@
           <thead>
             <tr>
               <th><input type="checkbox" id="kapSelectAll" title="Pilih semua"></th>
-              <th>No. Absen</th><th>Nama</th><th>Style</th><th>Proses</th><th>SMV</th>
+              <th>No. Absen</th><th>Nama</th><th>Style</th><th>Proses</th><th class="col-pic" id="kapThPic" style="display:none;">PIC</th><th>SMV</th>
               <th>Rata-rata</th><th>EFF</th>
               <th></th>
               <th>J1</th><th>J2</th><th>J3</th><th>J4</th><th>J5</th><th>J6</th><th>J7</th><th>J8</th><th>J9</th>
@@ -785,6 +786,7 @@
           </thead>
           <tbody id="kapBody"></tbody>
         </table>
+        <div class="hint" id="kapPicMsg" style="display:none;margin:8px 0;"></div>
         <div class="empty" id="kapEmpty" style="display:none;">Belum ada operator ter-assign untuk tanggal & line ini.</div>
       </div>
     </div>
@@ -801,9 +803,13 @@ const LINES = ['A01','F01','F02','F03','F04','F05','F06','F07','F08','S-F08','F0
 const LINES_SPECIAL = ['CAD','SKILL UP','REPAIR'];
 // Dari line khusus, hanya CAD dan SKILL UP yang operatornya boleh dicatat dengan PROSES (tanpa style); REPAIR tidak
 const LINES_PROCESS = ['CAD','SKILL UP'];
+// Line yang di Input Kapasitas punya kolom PIC (trainer, dari DATA OPT Section TRAINER)
+const LINES_KAP_PIC = ['SKILL UP'];
 
 let config = { gasUrl: 'https://script.google.com/macros/s/AKfycbyw1MOpplaAnsKI-6BsDg-malslfRkgxRLZKNTlgl2J7agaophG5wAOxY_EgAz7jFpePw/exec' };
 let dataOpt = [];      // {NIP, NAMA, ...}
+let dataTrainer = [];  // {NIP, NAMA} dari DATA OPT Section TRAINER (pilihan PIC)
+let trainerError = '';
 let dataSmv = [];      // {STYLE, SECTION, PROSES, SMV, CAPACITY 100% (PCS/JAM), LEVEL SKILL}
 let assignments = [];  // {localId, tanggal, noAbsen, nama, line, style, proses, synced}
 let kapasitas = [];    // {id, tanggal, noAbsen, nama, line, style, proses, smv, outputs:[9], synced}
@@ -900,6 +906,17 @@ async function testConnection(){
   }
 }
 
+// Daftar trainer untuk PIC. Gagal memuat (misalnya Code.gs belum di-deploy ulang) TIDAK boleh mengganggu data referensi lain.
+async function refreshTrainers(){
+  try{
+    dataTrainer = await gasGet('getTrainers');
+    trainerError = '';
+    storeSet('kap_dataTrainer', dataTrainer, true);
+  }catch(e){
+    trainerError = e.message || 'gagal memuat';   // daftar tersimpan di browser tetap dipakai
+  }
+}
+
 async function refreshReferenceData(){
   if(!config.gasUrl) return;
   try{
@@ -908,6 +925,7 @@ async function refreshReferenceData(){
     dataOpt = opt; dataSmv = smv;
     storeSet('kap_dataOpt', dataOpt, true);
     storeSet('kap_dataSmv', dataSmv, true);
+    await refreshTrainers();
     lastRefTime = new Date();
     document.getElementById('lastRefTime').textContent = lastRefTime.toLocaleTimeString('id-ID');
     setSyncStatus('ok','Tersambung');
@@ -940,6 +958,7 @@ async function pullExistingData(){
       line: r['LINE'] || '',
       style: r['STYLE'] || '',
       proses: r['PROSES'] || '',
+      pic: String(r['PIC'] || ''),
       smv: Number(r['SMV']) || 0,
       outputs: [1,2,3,4,5,6,7,8,9].map(i => r['OUTPUT JAM KE '+i] === '' || r['OUTPUT JAM KE '+i]===undefined ? '' : Number(r['OUTPUT JAM KE '+i])),
       synced: true
@@ -1006,7 +1025,8 @@ async function doSyncNow(evtOrMsgElId){
         'EVALUASI PENETAPAN (BULAN)': sisaWaktuPenetapan(k.noAbsen),
         'LAMA KERJA (TAHUN)': masaKerjaDisplay(k.noAbsen),
         'KATEGORI EFF': kategoriEfisiensi(effPercent),
-        'LEVEL SKILL': lookupLevelSkill(k.style, k.proses)
+        'LEVEL SKILL': lookupLevelSkill(k.style, k.proses),
+        'PIC': k.pic || ''
       };
       k.outputs.forEach((v,i)=>{ row['OUTPUT JAM KE '+(i+1)] = v; });
       return row;
@@ -1537,6 +1557,35 @@ function applyCopyRange(){
 }
 
 /* ---------- Kapasitas tab ---------- */
+/* ---------- Input Kapasitas: PIC (trainer) untuk line SKILL UP ---------- */
+function kapIsPicLine(line){
+  return LINES_KAP_PIC.includes(String(line||'').replace(/\s+/g,' ').trim().toUpperCase());
+}
+function trainerLabel(t){ return `${t.NIP} - ${t.NAMA}`; }
+// Pilihan PIC. Nilai tersimpan (yang dicetak ke Kapasitas Harian) = "NIP - Nama". Kalau nilai yang sudah tersimpan tidak
+// ada lagi di daftar trainer, tetap ditampilkan supaya tidak hilang diam-diam.
+function kapPicOptionsHtml(current){
+  const labels = dataTrainer.map(trainerLabel);
+  const cur = String(current||'');
+  const opts = ['<option value="">- pilih PIC -</option>'];
+  labels.forEach(l=> opts.push(`<option value="${rdEsc(l)}"${l===cur ? ' selected' : ''}>${rdEsc(l)}</option>`));
+  if(cur && !labels.includes(cur)) opts.push(`<option value="${rdEsc(cur)}" selected>${rdEsc(cur)} (tidak ada di daftar trainer)</option>`);
+  return opts.join('');
+}
+function kapRenderPicMsg(isPic){
+  const el = document.getElementById('kapPicMsg');
+  if(!el) return;
+  if(!isPic){ el.style.display = 'none'; return; }
+  el.style.display = '';
+  if(!dataTrainer.length){
+    el.textContent = 'Daftar trainer kosong' + (trainerError ? ` (${trainerError})` : '')
+      + '. PIC dipilih dari DATA OPT dengan Section TRAINER: pastikan Code.gs sudah di-deploy ulang dan kolom SECTION berisi TRAINER, lalu ambil ulang data di tab Pengaturan.';
+  }else{
+    el.textContent = `PIC dipilih dari DATA OPT Section TRAINER (${dataTrainer.length} trainer) dan dicetak ke kolom PIC di Kapasitas Harian sebagai "NIP - Nama".`
+      + (trainerError ? ` ⚠ Gagal memperbarui daftar trainer (${trainerError}); memakai daftar yang tersimpan.` : '');
+  }
+}
+
 function renderKapasitasTable(){
   ensureDatalists();
   const tbody = document.getElementById('kapBody');
@@ -1562,6 +1611,10 @@ function renderKapasitasTable(){
 
   rows = rows.slice().sort((a,b)=> (a.proses||'').localeCompare(b.proses||'', 'id') || (a.nama||'').localeCompare(b.nama||'', 'id'));
 
+  const isPic = kapIsPicLine(line);
+  document.getElementById('kapThPic').style.display = isPic ? '' : 'none';
+  kapRenderPicMsg(isPic);
+
   if(rows.length===0){ tbody.innerHTML=''; empty.style.display='block'; return; }
   empty.style.display='none';
 
@@ -1576,6 +1629,7 @@ function renderKapasitasTable(){
         <td data-label="No. Absen">${k.noAbsen}</td><td class="col-nama" data-label="Nama" title="${k.nama}">${k.nama}</td>
         <td data-label="Style"><input class="style-input k-style" list="styleList" value="${k.style}"></td>
         <td data-label="Proses"><input class="proses-input k-proses" list="${prosesDlId}" value="${k.proses}"></td>
+        ${isPic ? `<td data-label="PIC"><select class="k-pic">${kapPicOptionsHtml(k.pic)}</select></td>` : ''}
         <td class="k-smv" data-label="SMV">${k.smv || '-'}</td>
         <td class="k-rata" data-label="Rata-rata">${rata!==null?rata:'-'}</td>
         <td class="k-eff" data-label="EFF">${eff!==null?`<span class="eff-pill ${effClass(eff)}" title="${kategoriEfisiensi(eff)}">${eff.toFixed(2)}% (${kategoriEfisiensi(eff)})</span>`:'-'}</td>
@@ -1601,6 +1655,8 @@ function renderKapasitasTable(){
       const k = kapasitas.find(x=>x.id===id);
       k.style = styleInput.value.trim();
       k.proses = prosesInput.value.trim();
+      const picSel = tr.querySelector('.k-pic');
+      if(picSel) k.pic = picSel.value;
       k.smv = lookupSmv(k.style, k.proses);
       k.outputs = [...tr.querySelectorAll('.k-out')].map(inp=>inp.value===''?'':Number(inp.value));
       k.synced = false;
@@ -1617,6 +1673,8 @@ function renderKapasitasTable(){
 
     styleInput.addEventListener('input', ()=>{ prosesDatalistFor(dlId, styleInput.value); recalcRow(); });
     prosesInput.addEventListener('input', recalcRow);
+    const picEl = tr.querySelector('.k-pic');
+    if(picEl) picEl.addEventListener('change', recalcRow);
     tr.querySelectorAll('.k-out').forEach(inp=> inp.addEventListener('input', recalcRow));
     tr.querySelector('.k-autofill').addEventListener('click', ()=>{
       const outs = tr.querySelectorAll('.k-out');
@@ -5451,6 +5509,7 @@ async function init(){
   document.getElementById('gasUrlInput').value = config.gasUrl || '';
 
   dataOpt = (await storeGet('kap_dataOpt', true)) || [];
+  dataTrainer = (await storeGet('kap_dataTrainer', true)) || [];
   dataSmv = (await storeGet('kap_dataSmv', true)) || [];
   assignments = (await storeGet('kap_assignments', true)) || [];
   kapasitas = (await storeGet('kap_kapasitas', true)) || [];
