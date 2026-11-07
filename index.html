@@ -803,7 +803,7 @@ const LINES = ['A01','F01','F02','F03','F04','F05','F06','F07','F08','S-F08','F0
 const LINES_SPECIAL = ['CAD','SKILL UP','REPAIR'];
 // Dari line khusus, hanya CAD dan SKILL UP yang operatornya boleh dicatat dengan PROSES (tanpa style); REPAIR tidak
 const LINES_PROCESS = ['CAD','SKILL UP'];
-// Line yang di Input Kapasitas punya kolom PIC (trainer, dari DATA OPT Section TRAINER)
+// Line yang di Input Kapasitas punya kolom PIC (trainer, dari DATA OPT Section TRAINER SEWING)
 const LINES_KAP_PIC = ['SKILL UP'];
 
 let config = { gasUrl: 'https://script.google.com/macros/s/AKfycbyw1MOpplaAnsKI-6BsDg-malslfRkgxRLZKNTlgl2J7agaophG5wAOxY_EgAz7jFpePw/exec' };
@@ -1579,9 +1579,9 @@ function kapRenderPicMsg(isPic){
   el.style.display = '';
   if(!dataTrainer.length){
     el.textContent = 'Daftar trainer kosong' + (trainerError ? ` (${trainerError})` : '')
-      + '. PIC dipilih dari DATA OPT dengan Section TRAINER: pastikan Code.gs sudah di-deploy ulang dan kolom SECTION berisi TRAINER, lalu ambil ulang data di tab Pengaturan.';
+      + '. PIC dipilih dari DATA OPT dengan Section TRAINER SEWING: pastikan Code.gs sudah di-deploy ulang dan kolom SECTION berisi TRAINER SEWING, lalu ambil ulang data di tab Pengaturan.';
   }else{
-    el.textContent = `PIC dipilih dari DATA OPT Section TRAINER (${dataTrainer.length} trainer) dan dicetak ke kolom PIC di Kapasitas Harian sebagai "NIP - Nama".`
+    el.textContent = `PIC dipilih dari DATA OPT Section TRAINER SEWING (${dataTrainer.length} trainer) dan dicetak ke kolom PIC di Kapasitas Harian sebagai "NIP - Nama".`
       + (trainerError ? ` ⚠ Gagal memperbarui daftar trainer (${trainerError}); memakai daftar yang tersimpan.` : '');
   }
 }
