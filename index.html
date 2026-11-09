@@ -457,7 +457,7 @@
           <table class="data-table" id="histTable">
             <thead><tr>
               <th>Tanggal</th><th>No. Absen</th><th>Nama</th><th>Line</th><th>Style</th><th>Proses</th>
-              <th>Rata-rata</th><th>Capacity 100%</th><th>EFF</th><th>Kategori</th><th>Level Skill</th>
+              <th>Rata-rata</th><th>Capacity 100%</th><th>EFF</th><th>Kategori</th><th>Level Skill</th><th id="histThPic" style="display:none;">PIC</th>
             </tr></thead>
             <tbody id="histBody"></tbody>
           </table>
@@ -3126,6 +3126,10 @@ async function renderHistTabResults(){
     rows = rows.filter(r=> lineSet.has(String(r['LINE']||'').trim().toUpperCase()));
   }
 
+  // Kolom PIC (trainer SKILL UP) hanya tampil kalau hasil memuat minimal satu PIC
+  const hasPic = rows.some(r=> r['PIC']);
+  document.getElementById('histThPic').style.display = hasPic ? '' : 'none';
+
   if(rows.length===0){
     tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--text-dim);padding:16px;">Tidak ada data yang cocok dengan filter ini.</td></tr>`;
     msg.textContent = '0 baris ditemukan.';
@@ -3136,9 +3140,21 @@ async function renderHistTabResults(){
   // wajar: F02 sebelum F10), lalu Proses (A-Z), lalu EFF TERTINGGI di atas.
   // Baris tanpa nilai EFF ditaruh paling bawah di dalam Proses-nya. Kalau
   // masih sama, Nama A-Z.
+  // Kalau ada PIC: Tanggal tetap pertama, lalu PIC (A-Z menurut NAMA trainer; baris tanpa PIC di bawah baris
+  // ber-PIC pada tanggal yang sama), baru Line, Proses, EFF. Tanpa PIC, urutan lama tidak berubah.
+  const picName = p=>{ const s = String(p||'').trim(); const i = s.indexOf(' - '); return (i >= 0 ? s.slice(i+3) : s).toUpperCase(); };
   rows = rows.slice().sort((a,b)=>{
     const dc = String(a['TANGGAL']||'').localeCompare(String(b['TANGGAL']||''));
     if(dc !== 0) return dc;
+    if(hasPic){
+      const xa = String(a['PIC']||'').trim(), xb = String(b['PIC']||'').trim();
+      if(!!xa !== !!xb) return xa ? -1 : 1;
+      if(xa){
+        const nc = picName(xa).localeCompare(picName(xb), 'id');
+        if(nc !== 0) return nc;
+        if(xa !== xb) return xa.localeCompare(xb, 'id');
+      }
+    }
     const lc = String(a['LINE']||'').trim().localeCompare(String(b['LINE']||'').trim(), 'id', { numeric: true, sensitivity: 'base' });
     if(lc !== 0) return lc;
     const pa = String(a['PROSES']||'').trim(), pb = String(b['PROSES']||'').trim();
@@ -3169,10 +3185,11 @@ async function renderHistTabResults(){
         <td data-label="EFF">${isNaN(eff) ? '-' : `<span class="eff-pill ${effClass(eff)}">${eff.toFixed(1)}%</span>`}</td>
         <td data-label="Kategori">${kat==='-' ? '-' : `<span class="eff-pill ${effClass(eff)}">${kat}</span>`}</td>
         <td data-label="Level Skill">${r['LEVEL SKILL'] || '-'}</td>
+        ${hasPic ? `<td data-label="PIC">${rdEsc(r['PIC'] || '')}</td>` : ''}
       </tr>
     `;
   }).join('');
-  msg.textContent = `${rows.length} baris ditemukan (urut: Tanggal terlama, lalu Line, lalu Proses A-Z, lalu EFF tertinggi).`;
+  msg.textContent = `${rows.length} baris ditemukan (urut: Tanggal terlama, lalu ${hasPic ? 'PIC A-Z, lalu ' : ''}Line, lalu Proses A-Z, lalu EFF tertinggi).`;
 }
 document.getElementById('histShowBtn').addEventListener('click', renderHistTabResults);
 
