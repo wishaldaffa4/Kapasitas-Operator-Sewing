@@ -154,6 +154,7 @@
   .pl-line > summary::before{content:"▸";color:var(--text-dim);margin-right:2px;}
   .pl-line[open] > summary::before{content:"▾";}
   .pl-line:not([open]) > summary{border-bottom:none;}
+  .pl-missing{margin-top:12px;padding:8px 10px;border:1px solid var(--warn);border-radius:8px;background:rgba(224,167,46,.08);}
 
   .eff-good{background:rgba(62,207,142,.15);color:var(--good);}
   .eff-warn{background:rgba(224,167,46,.15);color:var(--warn);}
@@ -705,6 +706,14 @@
           <span class="hint" id="plotMsg" style="margin:0;"></span>
         </div>
         <div class="hint" style="margin-top:0;">Database default (tanpa tanggal) siapa mengerjakan proses apa di line dan style tertentu. Tersimpan di sheet "Plotting Default" dan bisa diubah kapan saja. Daftar proses mengikuti sheet Data SMV.</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Ringkasan operator</div>
+      <div class="panel-body">
+        <div id="plotSummary" class="rd-summary" style="margin-bottom:6px;"></div>
+        <div class="hint" id="plotSummaryNote" style="margin:0;"></div>
       </div>
     </div>
 
@@ -4425,11 +4434,14 @@ document.querySelectorAll('#sidebarNav button').forEach(btn=>{
 });
 
 /* ---------- Tab: Plotting Default (database default operator per line per style) ---------- */
-const PLOT_LINES = LINES.slice();
+// Line yang hanya punya Style (tanpa Proses): operatornya dicatat per style. Hanya ada di tab Plotting.
+const LINES_STYLE_ONLY = ['SUPPLY'];
+const PLOT_LINES = LINES.concat(LINES_STYLE_ONLY);
+function plotIsStyleOnlyLine(line){ return LINES_STYLE_ONLY.includes(String(line||'').replace(/\s+/g,' ').trim().toUpperCase()); }
 // Line khusus (CAD, SKILL UP, REPAIR): plotting hanya daftar operator di line itu, tanpa style dan proses
 function plotIsSpecialLine(line){ return LINES_SPECIAL.includes(String(line||'').replace(/\s+/g,' ').trim().toUpperCase()); }
 function plotIsProcessLine(line){ return LINES_PROCESS.includes(String(line||'').replace(/\s+/g,' ').trim().toUpperCase()); }
-function plotPosLabel(p){ return p.style ? `${p.line} · ${p.style} · ${p.proses}` : (p.proses ? `${p.line} · ${p.proses}` : p.line); }
+function plotPosLabel(p){ return (p.style && p.proses) ? `${p.line} · ${p.style} · ${p.proses}` : (p.style ? `${p.line} · ${p.style}` : (p.proses ? `${p.line} · ${p.proses}` : p.line)); }
 let plotRows = [];                          // {line, style, proses, nip, nama, diubah}; nip kosong = slot kosong (pengingat)
 let plotPending = { adds: [], dels: [] };   // perubahan yang belum dikonfirmasi server
 let plotInFlight = { adds: [], dels: [] };  // bagian dari plotPending yang sedang dikirim
@@ -4498,6 +4510,7 @@ function plotRemoveRow(r){
     if(plotIsProcessLine(gone.line) && plotNorm(gone.proses) && !plotRows.some(x=> !plotIsSlot(x) && plotSamePos(x, gone))) plotProcDraftAdd(gone.line, gone.proses);
     return false;
   }
+  if(plotIsStyleOnlyLine(gone.line)) return false;   // line Style saja (SUPPLY) tidak punya proses: tidak ada slot pengingat
   if(plotRows.some(x=> !plotIsSlot(x) && plotSamePos(x, gone))) return false;
   const slot = { line: gone.line, style: gone.style, proses: gone.proses, nip: '', nama: '', diubah: plotNowStamp() };
   if(!plotRows.some(x=> plotKeyOf(x)===plotKeyOf(slot))){ plotRows.push(slot); plotQueueAdd(slot); }
@@ -4632,6 +4645,19 @@ function plotSpecialLines(){
 }
 // Per proses (urutan Data SMV): operator di dalamnya. Hanya operator AKTIF yang dihitung.
 function plotPairStats(line, style){
+  if(plotIsStyleOnlyLine(line)){
+    // Line Style saja (SUPPLY): satu "baris" tanpa proses berisi operator style itu
+    const ops = [];
+    plotRowsFor(line, style).forEach(r=>{
+      if(plotIsSlot(r)) return;
+      const op = plotActiveOp(r.nip);
+      ops.push({ nip: r.nip, nama: op ? op['NAMA'] : (r.nama || r.nip), active: !!op });
+    });
+    ops.sort((a,b)=> plotNat(a.nama, b.nama));
+    const act = ops.filter(o=> o.active);
+    return { items: [{ proses: '', smv: '', level: '', ops, inSmv: true }], operatorsUnik: new Set(act.map(o=> plotNorm(o.nip))).size,
+             posisi: act.length, kosong: act.length ? 0 : 1, inactive: ops.length - act.length, total: 1 };
+  }
   const items = new Map();
   plotProsesList(style).forEach(p=> items.set(plotNorm(p.proses), { proses: p.proses, smv: p.smv, level: p.level, ops: [], inSmv: true }));
   plotRowsFor(line, style).forEach(r=>{
@@ -4652,9 +4678,92 @@ function plotPairStats(line, style){
   });
   return { items: list, operatorsUnik: nips.size, posisi, kosong, inactive, total: list.length };
 }
+// Operator (aktif) yang ada di SEBAGIAN style sebuah line tapi tidak di semua style line itu.
+// Dibandingkan hanya style yang sudah punya operator, dan yang dibandingkan hanya NAMA (bukan proses).
+function plotMissingAcrossStyles(line){
+  const byStyle = new Map();
+  plotRows.forEach(r=>{
+    if(plotIsSlot(r) || plotNorm(r.line)!==plotNorm(line)) return;
+    const op = plotActiveOp(r.nip);
+    if(!op) return;
+    const k = plotNorm(r.style);
+    if(!byStyle.has(k)) byStyle.set(k, { style: r.style, ops: new Map() });
+    byStyle.get(k).ops.set(plotNorm(r.nip), op['NAMA']);
+  });
+  const styles = [...byStyle.values()];
+  const compared = styles.map(s=> s.style).sort(plotNat);
+  if(styles.length < 2) return { compared, missing: [] };
+  const all = new Map();
+  styles.forEach(s=> s.ops.forEach((nama, nip)=> all.set(nip, nama)));
+  const missing = [];
+  all.forEach((nama, nip)=>{
+    const absent = styles.filter(s=> !s.ops.has(nip)).map(s=> s.style).sort(plotNat);
+    if(absent.length) missing.push({ nip, nama, missingStyles: absent });
+  });
+  missing.sort((a,b)=> plotNat(a.nama, b.nama));
+  return { compared, missing };
+}
+function plotMissingChipHtml(g){
+  const n = g.miss ? g.miss.missing.length : 0;
+  return n ? `<span class="lh-chip" style="color:var(--warn);" title="Operator yang ada di sebagian style line ini tetapi tidak di semua style">⚠ <b>${n}</b> tidak di semua style</span>` : '';
+}
+function plotMissingBoxHtml(g){
+  if(!g.miss || !g.miss.missing.length) return '';
+  return `<div class="pl-missing"><div style="font-weight:700;font-size:13px;">Operator tidak ada di semua style (${g.miss.missing.length})</div>
+    <div class="pl-sub" style="margin:2px 0 8px;">Dibandingkan: ${g.miss.compared.map(s=> rdEsc(s)).join(', ')}</div>
+    <div class="pl-ops">${g.miss.missing.map(m=> `<span class="pl-chip" style="padding-right:9px;" title="${rdEsc(m.nip)}">${rdEsc(m.nama)} <span class="pl-sub">tidak ada di: ${m.missingStyles.map(s=> rdEsc(s)).join(', ')}</span></span>`).join('')}</div></div>`;
+}
+/* --- ringkasan total operator per kategori --- */
+function plotCategoryOfLine(line){
+  const n = String(line||'').replace(/\s+/g,' ').trim().toUpperCase();
+  return (n==='SKILL UP' || n==='CAD' || n==='REPAIR' || n==='SUPPLY') ? n : 'LINE';
+}
+// Setiap operator AKTIF dihitung tepat sekali. Yang belum diplot masuk CAD (sama seperti daftar "Belum diplot").
+function plotSummaryModel(){
+  const cats = { 'LINE': 0, 'SKILL UP': 0, 'CAD': 0, 'REPAIR': 0, 'SUPPLY': 0 };
+  const byNip = new Map();
+  const inactive = new Set();
+  plotRows.forEach(r=>{
+    if(plotIsSlot(r)) return;
+    const k = plotNorm(r.nip);
+    if(!plotActiveOp(r.nip)){ inactive.add(k); return; }
+    const c = plotCategoryOfLine(r.line);
+    if(!byNip.has(k)) byNip.set(k, []);
+    if(!byNip.get(k).includes(c)) byNip.get(k).push(c);
+  });
+  const seen = new Set(), conflicts = [];
+  dataOpt.forEach(o=>{
+    const k = plotNorm(o['NIP']);
+    if(seen.has(k)) return;
+    seen.add(k);
+    const cs = byNip.get(k);
+    if(!cs){ cats['CAD']++; return; }
+    cats[cs[0]]++;
+    if(cs.length > 1) conflicts.push({ nama: o['NAMA'], nip: o['NIP'], cats: cs });
+  });
+  return { total: seen.size, cats, conflicts, inactive: inactive.size };
+}
+function plotRenderSummary(){
+  const box = plotEl('plotSummary'), note = plotEl('plotSummaryNote');
+  if(!box || !note) return;
+  if(!dataOpt.length){ box.innerHTML = ''; note.textContent = 'Data operator belum dimuat.'; return; }
+  const m = plotSummaryModel();
+  const pct = n=> m.total ? Math.round(n / m.total * 100) : 0;
+  const labels = [['LINE', 'Line (produksi)'], ['SKILL UP', 'SKILL UP'], ['CAD', 'CAD'], ['REPAIR', 'REPAIR'], ['SUPPLY', 'SUPPLY']];
+  box.innerHTML = labels.map(([k, l])=> `<div class="rd-stat"><div class="rd-stat-val">${m.cats[k]}</div><div class="rd-stat-lbl">${rdEsc(l)} · ${pct(m.cats[k])}%</div></div>`).join('')
+    + `<div class="rd-stat" style="border-color:var(--accent);"><div class="rd-stat-val">${m.total}</div><div class="rd-stat-lbl">Total operator aktif</div></div>`;
+  const notes = [];
+  if(m.conflicts.length){
+    const names = m.conflicts.slice(0, 5).map(c=> c.nama).join(', ') + (m.conflicts.length > 5 ? ` dan ${m.conflicts.length - 5} lainnya` : '');
+    notes.push(`⚠ ${m.conflicts.length} operator tercatat di lebih dari satu kategori (dihitung sekali): ${names}`);
+  }
+  if(m.inactive) notes.push(`${m.inactive} operator di database plotting sudah tidak aktif dan tidak dihitung`);
+  note.textContent = notes.join(' · ');
+}
 function plotNeedsFill(){
   const out = [];
   plotPairs().forEach(p=>{
+    if(plotIsStyleOnlyLine(p.line)) return;   // tidak punya proses, tidak ada yang perlu diisi
     const st = plotPairStats(p.line, p.style);
     const missing = st.items.filter(it=> !it.ops.some(o=> o.active));
     if(missing.length) out.push({ line: p.line, style: p.style, items: missing.map(it=> ({ proses: it.proses, reason: it.ops.length ? 'operator tidak aktif' : 'kosong' })) });
@@ -4775,14 +4884,15 @@ function plotTryAdd(inputValue, proses){
   const line = plotSel.line;
   const special = plotIsSpecialLine(line);
   const procLine = plotIsProcessLine(line);
+  const styleOnly = plotIsStyleOnlyLine(line);
   const style = special ? '' : plotSel.style;
-  const pr = special ? (procLine ? String(proses||'').replace(/\s+/g,' ').trim() : '') : proses;
+  const pr = special ? (procLine ? String(proses||'').replace(/\s+/g,' ').trim() : '') : (styleOnly ? '' : proses);
   if(!line || (!special && !style)){ plotMsg('Pilih Line dan Style dulu.'); return; }
   const op = plotResolveOperator(inputValue);
   if(!op){ plotMsg('Operator tidak ditemukan di daftar operator aktif: ' + String(inputValue||'').trim()); return; }
   const nip = op['NIP'], nama = op['NAMA'];
   if(plotRows.some(r=> !plotIsSlot(r) && plotSamePos(r, { line, style, proses: pr }) && plotNorm(r.nip)===plotNorm(nip))){
-    plotMsg(special ? (pr ? `${nama} sudah ada di ${line} · ${pr}.` : `${nama} sudah ada di ${line}.`) : `${nama} sudah ada di proses ${pr}.`); return;
+    plotMsg(special ? (pr ? `${nama} sudah ada di ${line} · ${pr}.` : `${nama} sudah ada di ${line}.`) : (styleOnly ? `${nama} sudah ada di ${line} · ${style}.` : `${nama} sudah ada di proses ${pr}.`)); return;
   }
   // CAD/SKILL UP: operator yang sudah punya proses di line ini tidak boleh sekaligus "tanpa proses"
   const mine = plotRows.filter(r=> !plotIsSlot(r) && plotNorm(r.nip)===plotNorm(nip) && plotNorm(r.line)===plotNorm(line));
@@ -4844,6 +4954,7 @@ function plotOpenPair(line, style){
 /* --- tampilan --- */
 function renderPlotting(){
   const noRef = !dataOpt.length || !dataSmv.length;
+  plotRenderSummary();
   plotEl('plotStyleDL').innerHTML = stylesList().map(s=> `<option value="${rdEsc(s)}"></option>`).join('');
   const where = new Map();
   plotRows.forEach(r=>{
@@ -4923,6 +5034,19 @@ function plotRenderProcessGrid(statsBox, grid){
   }).join('');
   grid.innerHTML = `<div class="pl-grid"><div class="pl-row head"><span>Proses</span><span>Operator</span><span style="text-align:center;">Jumlah</span></div>${rows}</div>`;
 }
+function plotRenderStyleOnlyGrid(statsBox, grid){
+  const line = plotSel.line, style = plotSel.style;
+  const st = plotPairStats(line, style);
+  const it = st.items[0];
+  statsBox.innerHTML = `
+    <div class="rd-stat"><div class="rd-stat-val">${st.operatorsUnik}</div><div class="rd-stat-lbl">Operator di ${rdEsc(line)} · ${rdEsc(style)}</div></div>
+    ${st.inactive ? `<div class="rd-stat" style="border-color:var(--bad);"><div class="rd-stat-val">${st.inactive}</div><div class="rd-stat-lbl">Operator tidak aktif</div></div>` : ''}`;
+  const chips = it.ops.map(o=> `<span class="pl-chip ${o.active ? '' : 'inactive'}" title="${rdEsc(o.nip)}">${rdEsc(o.nama)}${o.active ? '' : ' ⚠ tidak aktif'}<button class="pl-x" aria-label="Hapus" data-action="rm" data-line="${encodeURIComponent(line)}" data-style="${encodeURIComponent(style)}" data-p="" data-nip="${encodeURIComponent(o.nip)}">×</button></span>`).join('');
+  grid.innerHTML = `<div class="pl-grid"><div class="pl-row head"><span>Style</span><span>Operator</span><span style="text-align:center;">Jumlah</span></div>
+    <div class="pl-row ${st.operatorsUnik ? '' : 'empty'}"><div class="pl-proses">${rdEsc(style)}<div class="pl-sub">Tanpa proses</div></div>
+      <div class="pl-ops">${chips}${it.ops.length ? '' : '<span class="pl-sub">Belum ada operator</span>'}<input class="pl-add" list="plotOpDL" placeholder="+ operator (NIP atau nama)" data-role="add" data-p=""></div>
+      <div class="pl-count">${st.operatorsUnik}</div></div></div>`;
+}
 function plotRenderGrid(noRef){
   const statsBox = plotEl('plotStats'), grid = plotEl('plotGrid');
   if(plotIsSpecialLine(plotSel.line)){
@@ -4953,6 +5077,7 @@ function plotRenderGrid(noRef){
     grid.innerHTML = '<div class="hint">Pilih Line dan Style untuk mulai memplot operator.</div>';
     return;
   }
+  if(plotIsStyleOnlyLine(plotSel.line)){ plotRenderStyleOnlyGrid(statsBox, grid); return; }
   const st = plotPairStats(plotSel.line, plotSel.style);
   if(!st.items.length){
     statsBox.innerHTML = '';
@@ -4993,12 +5118,13 @@ function plotRenderCad(){
   const specialTarget = plotIsSpecialLine(plotSel.line);
   const ready = plotSel.line && (specialTarget || plotSel.style);
   const procTarget = plotIsProcessLine(plotSel.line);
-  const procs = !ready ? [] : (procTarget ? plotProcessGroups(plotSel.line, true).filter(g=> g.proses).map(g=> ({ proses: g.proses })) : (!specialTarget ? plotProsesList(plotSel.style) : []));
+  const styleOnlyTarget = plotIsStyleOnlyLine(plotSel.line);
+  const procs = !ready ? [] : (procTarget ? plotProcessGroups(plotSel.line, true).filter(g=> g.proses).map(g=> ({ proses: g.proses })) : (!specialTarget && !styleOnlyTarget ? plotProsesList(plotSel.style) : []));
   const shown = list.slice(0, plotCadLimit);
   const opts = '<option value="">' + (procTarget ? 'Tanpa proses' : 'Pilih proses') + '</option>' + procs.map(p=> `<option value="${encodeURIComponent(p.proses)}">${rdEsc(p.proses)}</option>`).join('');
   let html = shown.map(o=>
     `<div class="pl-cad-row"><div>${rdEsc(o['NAMA'])}<div class="pl-sub">${rdEsc(o['NIP'])}${plotOpSkills(o) ? ' · ' + rdEsc(plotOpSkills(o)) : ''}</div></div>
-      ${ready && specialTarget && !procTarget ? `<span class="pl-sub">tanpa style dan proses</span><button class="small" data-action="cad-plot" data-nip="${encodeURIComponent(o['NIP'])}">Plot</button>` : ready ? `<select data-role="cad-proses" data-nip="${encodeURIComponent(o['NIP'])}">${opts}</select><button class="small" data-action="cad-plot" data-nip="${encodeURIComponent(o['NIP'])}">Plot</button>` : '<span class="pl-sub" style="grid-column:span 2;">Pilih Line dan Style di atas dulu</span>'}</div>`).join('');
+      ${ready && ((specialTarget && !procTarget) || styleOnlyTarget) ? `<span class="pl-sub">${styleOnlyTarget ? 'tanpa proses' : 'tanpa style dan proses'}</span><button class="small" data-action="cad-plot" data-nip="${encodeURIComponent(o['NIP'])}">Plot</button>` : ready ? `<select data-role="cad-proses" data-nip="${encodeURIComponent(o['NIP'])}">${opts}</select><button class="small" data-action="cad-plot" data-nip="${encodeURIComponent(o['NIP'])}">Plot</button>` : '<span class="pl-sub" style="grid-column:span 2;">Pilih Line dan Style di atas dulu</span>'}</div>`).join('');
   if(list.length > shown.length) html += `<div class="pl-cad-row" style="grid-template-columns:1fr;"><button class="small secondary" data-action="cad-more">Tampilkan ${Math.min(40, list.length - shown.length)} lagi (${list.length - shown.length} tersisa)</button></div>`;
   if(!list.length) html = `<div class="hint" style="padding:12px;margin:0;">${all.length ? 'Tidak ada yang cocok dengan pencarian.' : 'Semua operator aktif sudah diplot.'}</div>`;
   plotEl('plotCad').innerHTML = html;
@@ -5029,7 +5155,7 @@ function plotDbModel(lineFilter, search){
     const top = { count: best, styles: best > 0 ? full.filter(s=> s.st.operatorsUnik === best).map(s=> s.style) : [] };
     styles.sort((a,b)=> plotNat(a.style, b.style));
     styles.forEach(s=> s.st.items.sort((a,b)=> plotNat(a.proses, b.proses)));
-    return { line, operatorsUnik: nips.size, styleCount: full.length, top, styles };
+    return { line, operatorsUnik: nips.size, styleCount: full.length, top, styles, miss: plotMissingAcrossStyles(line) };
   });
   // Line khusus (CAD, SKILL UP, REPAIR): hanya daftar operator
   plotSpecialLines().forEach(line=>{
@@ -5050,6 +5176,24 @@ function plotDbProcessHtml(g, isOpen){
       <summary class="rd-line-head" data-action="db-toggle" data-line="${encodeURIComponent(g.line)}"><span class="rd-line-name">${rdEsc(g.line)}</span>
         <span class="lh-chip"><b>${g.operatorsUnik}</b> operator</span><span class="lh-chip"><b>${nProses}</b> proses</span>${g.inactive ? `<span class="lh-chip" style="color:var(--bad);"><b>${g.inactive}</b> tidak aktif</span>` : ''}<span class="lh-chip">Tanpa style</span></summary>
       <div class="rd-line-body">${rows ? `<div style="overflow-x:auto;"><table class="pl-table"><thead><tr><th>Proses</th><th>Operator</th><th style="text-align:center;">Jumlah</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<span class="pl-sub">kosong</span>'}</div>
+    </details>`;
+}
+function plotDbStyleOnlyHtml(g, isOpen){
+  const missChip = plotMissingChipHtml(g);
+  const topHtml = g.top.styles.length
+    ? `<span class="lh-chip" title="Style dengan operator unik terbanyak di line ini">Terbanyak: <b>${g.top.styles.map(s=> rdEsc(s)).join(', ')}</b> · <b>${g.top.count}</b> operator</span>`
+    : '<span class="lh-chip">Belum ada operator aktif</span>';
+  const chip = o=> `<span class="pl-chip ${o.active ? '' : 'inactive'}" style="padding-right:9px;" title="${rdEsc(o.nip)}">${rdEsc(o.nama)}${o.active ? '' : ' ⚠ tidak aktif'}</span>`;
+  const body = g.styles.map(s=> {
+    const ops = s.st.items[0].ops;
+    return `<div class="pl-style-head">${rdEsc(s.style)}<span class="lh-chip"><b>${s.st.operatorsUnik}</b> operator</span>${s.st.inactive ? `<span class="lh-chip" style="color:var(--bad);"><b>${s.st.inactive}</b> tidak aktif</span>` : ''}<span class="lh-chip">Tanpa proses</span></div>
+      <div class="pl-ops">${ops.map(chip).join(' ') || '<span class="pl-sub">kosong</span>'}</div>`;
+  }).join('');
+  return `
+    <details class="rd-line pl-line"${isOpen ? ' open' : ''}>
+      <summary class="rd-line-head" data-action="db-toggle" data-line="${encodeURIComponent(g.line)}"><span class="rd-line-name">${rdEsc(g.line)}</span>
+        <span class="lh-chip"><b>${g.styleCount}</b> style</span><span class="lh-chip"><b>${g.operatorsUnik}</b> operator unik</span>${topHtml}${missChip}</summary>
+      <div class="rd-line-body">${body}${plotMissingBoxHtml(g)}</div>
     </details>`;
 }
 function plotRenderDb(){
@@ -5077,13 +5221,15 @@ function plotRenderDb(){
       <div class="rd-line-body"><div class="pl-ops">${chips || '<span class="pl-sub">kosong</span>'}</div></div>
     </details>`;
     }
+    if(plotIsStyleOnlyLine(g.line)) return plotDbStyleOnlyHtml(g, isOpen);
+    const missChip = plotMissingChipHtml(g);
     const topHtml = g.top.styles.length
       ? `<span class="lh-chip" title="Style dengan operator unik terbanyak di line ini">Terbanyak: <b>${g.top.styles.map(s=> rdEsc(s)).join(', ')}</b> · <b>${g.top.count}</b> operator</span>`
       : '<span class="lh-chip">Belum ada operator aktif</span>';
     return `
     <details class="rd-line pl-line"${isOpen ? ' open' : ''}>
       <summary class="rd-line-head" data-action="db-toggle" data-line="${encodeURIComponent(g.line)}"><span class="rd-line-name">${rdEsc(g.line)}</span>
-        <span class="lh-chip"><b>${g.styleCount}</b> style</span><span class="lh-chip"><b>${g.operatorsUnik}</b> operator unik</span>${topHtml}</summary>
+        <span class="lh-chip"><b>${g.styleCount}</b> style</span><span class="lh-chip"><b>${g.operatorsUnik}</b> operator unik</span>${topHtml}${missChip}</summary>
       <div class="rd-line-body">${g.styles.map(s=> `
         <div class="pl-style-head">${rdEsc(s.style)}
           <span class="lh-chip"><b>${s.st.operatorsUnik}</b> operator unik</span>
@@ -5091,7 +5237,7 @@ function plotRenderDb(){
           <span class="lh-chip" style="${s.st.kosong ? 'color:var(--warn);' : ''}"><b>${s.st.kosong}</b> proses kosong</span></div>
         <div style="overflow-x:auto;"><table class="pl-table"><thead><tr><th>Proses</th><th>Operator</th><th style="text-align:center;">Jumlah</th></tr></thead><tbody>
           ${s.st.items.map(it=> `<tr><td>${rdEsc(it.proses)}</td><td>${it.ops.length ? it.ops.map(o=> `<span class="pl-chip ${o.active ? '' : 'inactive'}" style="padding-right:9px;">${rdEsc(o.nama)}${o.active ? '' : ' ⚠ tidak aktif'}</span>`).join(' ') : '<span class="pl-sub">kosong</span>'}</td><td style="text-align:center;">${it.ops.filter(o=> o.active).length}</td></tr>`).join('')}
-        </tbody></table></div>`).join('')}</div>
+        </tbody></table></div>`).join('')}${plotMissingBoxHtml(g)}</div>
     </details>`;
   }).join('');
 }
@@ -5122,7 +5268,7 @@ function plotOnClick(e){
       const row = b.parentNode;
       const selEl = row && row.querySelector ? row.querySelector('select[data-role="cad-proses"]') : null;
       const proses = selEl ? dec(selEl.value) : '';
-      if(!proses && !plotIsSpecialLine(plotSel.line)){ plotMsg('Pilih proses dulu untuk operator ini.'); break; }
+      if(!proses && !plotIsSpecialLine(plotSel.line) && !plotIsStyleOnlyLine(plotSel.line)){ plotMsg('Pilih proses dulu untuk operator ini.'); break; }
       plotTryAdd(nip, proses);
       break;
     }
