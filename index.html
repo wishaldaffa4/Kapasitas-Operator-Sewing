@@ -123,6 +123,32 @@
   .cs-table td{padding:4px 6px;border-bottom:1px solid var(--border);vertical-align:top;}
   .cs-note{font-size:11px;color:var(--text-dim);margin-top:6px;line-height:1.5;}
   select.k-pic{min-width:190px;font-size:12px;padding:4px 6px;}
+  /* ---------- Tab Performa Operator ---------- */
+  .pf-chart{margin:6px 0 12px;}
+  .pf-chart svg{width:100%;height:auto;display:block;}
+  .pf-grid{stroke:var(--border);stroke-width:1;}
+  .pf-ref{stroke:var(--warn);stroke-width:1;stroke-dasharray:4 3;}
+  .pf-line{fill:none;stroke:var(--accent);stroke-width:2;}
+  .pf-dot{fill:var(--accent);}
+  .pf-txt{fill:var(--text-dim);font-size:10px;}
+  .pf-val{fill:var(--text);font-size:10px;font-weight:600;}
+  .pf-table{width:100%;min-width:0;border-collapse:collapse;font-size:12px;}
+  .pf-table th{text-align:left;color:var(--text-dim);font-weight:600;padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;}
+  .pf-table td{padding:5px 6px;border-bottom:1px solid var(--border);vertical-align:top;}
+  .pf-table tr.pf-empty td{color:var(--text-dim);font-style:italic;}
+  .pf-print-title{display:none;font-size:16px;font-weight:700;margin-bottom:10px;}
+  @media print{
+    body.print-perf *{visibility:hidden !important;}
+    body.print-perf #perfArea, body.print-perf #perfArea *{visibility:visible !important;}
+    body.print-perf #perfArea{position:absolute;left:0;top:0;width:100%;}
+    body.print-perf #perfArea *{color:#000 !important;background:transparent !important;border-color:#888 !important;box-shadow:none !important;}
+    body.print-perf #perfArea svg text{fill:#000 !important;}
+    body.print-perf #perfArea .pf-line{stroke:#000 !important;}
+    body.print-perf #perfArea .pf-dot{fill:#000 !important;}
+    body.print-perf #perfArea .pf-block{page-break-inside:avoid;}
+    body.print-perf #perfArea summary::marker{content:'';}
+    body.print-perf .pf-print-title{display:block !important;}
+  }
   /* ---------- Tab Plotting Default ---------- */
   .pl-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:12px 0;}
   .pl-banner{border-radius:8px;padding:10px 12px;margin:10px 0;font-size:12.5px;line-height:1.5;background:rgba(224,167,46,.12);border:1px solid var(--warn);color:var(--text);}
@@ -246,6 +272,7 @@
     <button data-tab="running"><span class="side-icon">🏃</span> Running Days</button>
     <button data-tab="linehistory"><span class="side-icon">📜</span> Histori Line</button>
     <button data-tab="plotting"><span class="side-icon">🧷</span> Plotting Default</button>
+    <button data-tab="perf"><span class="side-icon">📈</span> Performa Operator</button>
     <hr>
     <button data-tab="settings"><span class="side-icon">⚙️</span> Pengaturan</button>
   </aside>
@@ -761,6 +788,24 @@
     <datalist id="plotStyleDL"></datalist>
     <datalist id="plotOpDL"></datalist>
     <datalist id="plotProcDL"></datalist>
+  </div>
+
+  <!-- TAB: PERFORMA OPERATOR -->
+  <div id="tab-perf" class="tab-content" style="display:none;">
+    <div class="panel">
+      <div class="panel-title">Performa Operator per Bulan (12 bulan terakhir)</div>
+      <div class="panel-body">
+        <div class="row" style="margin-bottom:6px;">
+          <div class="field" style="min-width:300px;flex:1;" id="perfOpMS"></div>
+          <div class="field"><label>&nbsp;</label><button id="perfShowBtn">Tampilkan</button></div>
+          <div class="field"><label>&nbsp;</label><button id="perfCsvBtn" class="secondary">Unduh CSV</button></div>
+          <div class="field"><label>&nbsp;</label><button id="perfPrintBtn" class="secondary">Cetak</button></div>
+          <span class="hint" id="perfMsg" style="align-self:center;"></span>
+        </div>
+        <div class="hint" style="margin-top:0;">Tiap bulan menampilkan satu catatan dengan EFF tertinggi; EFF di atas 150% diabaikan karena kemungkinan salah input. Kapasitas 100% diambil dari DATA LOOKER (standar saat catatan dibuat). Hari tercatat = jumlah hari operator menjalankan style dan proses yang sama pada bulan itu. Maksimal 30 operator sekali tampil. CSV memakai pemisah titik koma dan koma desimal (format Excel Indonesia).</div>
+      </div>
+    </div>
+    <div id="perfArea"></div>
   </div>
 
   <!-- TAB: KAPASITAS -->
@@ -2987,12 +3032,13 @@ function renderSummaryTab(){
 
 /* ---------- Tabs ---------- */
 /* ---------- Komponen multi-select checklist (dipakai untuk tab Histori) ---------- */
-function createMultiSelect(containerId, labelPrefix, options){
+function createMultiSelect(containerId, labelPrefix, options, emptyLabel){
+  const emptyText = emptyLabel || `Semua ${labelPrefix.toLowerCase()}`;   // label tombol saat belum ada yang dipilih
   const container = document.getElementById(containerId);
   container.innerHTML = `
     <label>${labelPrefix}</label>
     <div class="ms-dropdown">
-      <button type="button" class="secondary ms-toggle">Semua ${labelPrefix.toLowerCase()}</button>
+      <button type="button" class="secondary ms-toggle">${emptyText}</button>
     </div>
   `;
   const toggle = container.querySelector('.ms-toggle');
@@ -3031,7 +3077,7 @@ function createMultiSelect(containerId, labelPrefix, options){
     });
   }
   function updateToggleLabel(){
-    toggle.textContent = selected.size===0 ? `Semua ${labelPrefix.toLowerCase()}` : `${labelPrefix} (${selected.size} dipilih)`;
+    toggle.textContent = selected.size===0 ? emptyText : `${labelPrefix} (${selected.size} dipilih)`;
   }
   function positionPanel(){
     const rect = toggle.getBoundingClientRect();
@@ -4427,6 +4473,7 @@ function switchTab(tabName){
   if(tabName==='running') initRunningTab();
   if(tabName==='linehistory') initLineHistoryTab();
   if(tabName==='plotting') initPlottingTab();
+  if(tabName==='perf') initPerfTab();
   saveUiState();
 }
 document.querySelectorAll('#sidebarNav button').forEach(btn=>{
@@ -5347,6 +5394,206 @@ async function initPlottingTab(){
     renderPlotting();
   }
 }
+
+/* ---------- Tab: Performa Operator (EFF terbaik per bulan, 12 bulan terakhir) ---------- */
+const PERF_MAX = 30;
+const PERF_MONTHS_ID = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+let perfOpMS = null;
+let perfOptKey = '';
+let perfData = null;        // jawaban server: { months, currentMonth, operators }
+let perfNips = [];          // urutan operator yang ditampilkan
+let perfPrintRestore = null;
+
+function perfEl(id){ return document.getElementById(id); }
+function perfMsg(t){ const el = perfEl('perfMsg'); if(el) el.textContent = t || ''; }
+function perfNipOf(label){ return String(label||'').split(' - ')[0].trim(); }
+function perfMonthLabel(key, isCurrent){
+  return `${PERF_MONTHS_ID[Number(key.slice(5,7)) - 1]} ${key.slice(0,4)}${isCurrent ? ' (sebagian)' : ''}`;
+}
+// Angka rapi tanpa nol di belakang koma (43 -> "43", 42.5 -> "42.5", 2.667 -> "2.67")
+function perfNum(v){
+  const n = Number(v);
+  if(v === '' || v == null || !isFinite(n)) return '-';
+  return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, '');
+}
+function perfEntry(nip){ return (perfData && perfData.operators && perfData.operators[nip]) || { nama: '', months: {} }; }
+function perfBestOf(entry, m){ const e = entry.months && entry.months[m]; return e && e.best ? e.best : null; }
+function perfSummary(entry, months){
+  const bests = months.map(m=> perfBestOf(entry, m)).filter(Boolean);
+  if(!bests.length) return { n: 0 };
+  const effs = bests.map(b=> b.eff);
+  const last = bests[bests.length - 1];
+  return { n: bests.length, avg: effs.reduce((a,b)=> a + b, 0) / effs.length, max: Math.max(...effs), min: Math.min(...effs), line: last.line, level: last.level, nama: last.nama };
+}
+function perfNote(e, m, current){
+  const parts = [];
+  if(!e || (!e.best && !e.records)) parts.push('tidak ada data');
+  else if(!e.best) parts.push('tidak ada data valid');
+  if(e && e.anomalies) parts.push(`${e.anomalies} catatan EFF di atas 150% diabaikan`);
+  if(m === current && e && e.best) parts.push('bulan berjalan (sebagian)');
+  return parts.join('; ');
+}
+
+/* --- grafik tren (SVG) --- */
+function perfChartSvg(entry, months){
+  const W = 640, H = 210, padL = 38, padR = 14, padT = 18, padB = 28;
+  const pts = months.map((m,i)=>{ const b = perfBestOf(entry, m); return { i, eff: b ? b.eff : null }; });
+  const maxEff = Math.max(120, ...pts.filter(p=> p.eff !== null).map(p=> p.eff + 10));
+  const x = i=> padL + (W - padL - padR) * (months.length > 1 ? i / (months.length - 1) : 0.5);
+  const y = v=> padT + (H - padT - padB) * (1 - v / maxEff);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Tren EFF terbaik per bulan">`;
+  [0, 50, 100].forEach(v=>{
+    svg += `<line class="${v === 100 ? 'pf-ref' : 'pf-grid'}" x1="${padL}" x2="${W - padR}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"></line><text class="pf-txt" x="${padL - 4}" y="${(y(v) + 3).toFixed(1)}" text-anchor="end">${v}%</text>`;
+  });
+  const segs = []; let cur = [];
+  pts.forEach(p=>{ if(p.eff === null){ if(cur.length) segs.push(cur); cur = []; } else cur.push(p); });
+  if(cur.length) segs.push(cur);
+  segs.forEach(sg=>{
+    if(sg.length > 1) svg += `<path class="pf-line" d="${sg.map((p,k)=> (k ? 'L' : 'M') + x(p.i).toFixed(1) + ' ' + y(p.eff).toFixed(1)).join(' ')}"></path>`;
+  });
+  pts.forEach(p=>{
+    if(p.eff === null) return;
+    svg += `<circle class="pf-dot" cx="${x(p.i).toFixed(1)}" cy="${y(p.eff).toFixed(1)}" r="3.5"></circle><text class="pf-val" x="${x(p.i).toFixed(1)}" y="${(y(p.eff) - 8).toFixed(1)}" text-anchor="middle">${p.eff.toFixed(0)}%</text>`;
+  });
+  months.forEach((m,i)=>{
+    svg += `<text class="pf-txt" x="${x(i).toFixed(1)}" y="${H - 8}" text-anchor="middle">${PERF_MONTHS_ID[Number(m.slice(5,7)) - 1]}</text>`;
+  });
+  return svg + '</svg>';
+}
+
+/* --- blok per operator --- */
+function perfBlockHtml(nip, isOpen){
+  const entry = perfEntry(nip), months = perfData.months, current = perfData.currentMonth;
+  const opRec = dataOpt.find(o=> String(o['NIP']).trim().toUpperCase() === String(nip).trim().toUpperCase());
+  const sum = perfSummary(entry, months);
+  const nama = (opRec && opRec['NAMA']) || entry.nama || sum.nama || '';
+  const chips = sum.n
+    ? `<span class="lh-chip">Rata-rata <b>${sum.avg.toFixed(1)}%</b></span><span class="lh-chip">Tertinggi <b>${sum.max.toFixed(1)}%</b></span><span class="lh-chip">Terendah <b>${sum.min.toFixed(1)}%</b></span><span class="lh-chip"><b>${sum.n}</b> dari ${months.length} bulan ada data</span>${sum.line ? `<span class="lh-chip">Line terakhir <b>${rdEsc(sum.line)}</b></span>` : ''}${sum.level !== '' && sum.level != null ? `<span class="lh-chip">Level <b>${rdEsc(sum.level)}</b></span>` : ''}`
+    : '<span class="lh-chip">Belum ada data di 12 bulan terakhir</span>';
+  const rows = months.map(m=>{
+    const e = entry.months && entry.months[m];
+    const label = rdEsc(perfMonthLabel(m, m === current));
+    const b = e && e.best;
+    if(!b) return `<tr class="pf-empty"><td>${label}</td><td colspan="11">${rdEsc(perfNote(e, m, current))}</td></tr>`;
+    const warn = e.anomalies ? ` <span title="${e.anomalies} catatan EFF di atas 150% diabaikan" style="color:var(--warn);">⚠</span>` : '';
+    return `<tr><td>${label}</td><td>${rdEsc(b.nip)}</td><td>${rdEsc(b.nama)}</td><td>${rdEsc(b.line)}</td><td>${rdEsc(b.style)}</td><td>${rdEsc(b.proses)}</td>
+      <td style="text-align:right;">${perfNum(b.smv)}</td><td style="text-align:right;">${perfNum(b.rata)}</td>
+      <td><span class="eff-pill ${effClass(b.eff)}">${b.eff.toFixed(2)}%</span>${warn}</td>
+      <td style="text-align:center;">${b.level === '' || b.level == null ? '-' : rdEsc(b.level)}</td><td>${rdEsc(fmtDate(b.tanggal))}</td><td style="text-align:center;">${b.hari}</td></tr>`;
+  }).join('');
+  return `
+    <details class="rd-line pl-line pf-block"${isOpen ? ' open' : ''}>
+      <summary class="rd-line-head"><span class="rd-line-name">${rdEsc(nama || nip)}</span><span class="lh-chip">${rdEsc(nip)}</span>${chips}</summary>
+      <div class="rd-line-body">
+        <div class="pf-chart">${perfChartSvg(entry, months)}</div>
+        <div style="overflow-x:auto;"><table class="pf-table"><thead><tr><th>Bulan</th><th>NIK</th><th>Nama</th><th>Line</th><th>Style</th><th>Proses</th><th style="text-align:right;">Kapasitas 100%</th><th style="text-align:right;">Rata-rata</th><th>Efisiensi</th><th style="text-align:center;">Level Skill</th><th>Tanggal</th><th style="text-align:center;">Hari tercatat</th></tr></thead><tbody>${rows}</tbody></table></div>
+      </div>
+    </details>`;
+}
+function renderPerf(){
+  const area = perfEl('perfArea');
+  if(!perfData || !perfNips.length){ area.innerHTML = ''; return; }
+  const ms = perfData.months;
+  const title = `Laporan Performa Operator · ${perfMonthLabel(ms[0])} sampai ${perfMonthLabel(ms[ms.length - 1])} · dicetak ${fmtDate(todayStr())}`;
+  area.innerHTML = `<div class="pf-print-title">${rdEsc(title)}</div>` + perfNips.map(nip=> perfBlockHtml(nip, perfNips.length <= 3)).join('');
+}
+
+/* --- ambil data --- */
+async function perfShow(){
+  const sel = perfOpMS ? perfOpMS.getSelected() : [];
+  if(!sel.length){ perfMsg('Pilih minimal satu operator dulu.'); return; }
+  if(sel.length > PERF_MAX){ perfMsg(`Maksimal ${PERF_MAX} operator sekali tampil (kamu memilih ${sel.length}).`); return; }
+  const nips = sel.map(perfNipOf);
+  perfMsg('Memuat...');
+  try{
+    // Diantre bareng sinkron lain supaya tidak bertabrakan di koneksi yang lemah
+    perfData = await queuedFetch(()=> gasGet('getOperatorMonthlyBest&nips=' + encodeURIComponent(nips.join(','))));
+    perfNips = nips;
+    renderPerf();
+    perfMsg('');
+  }catch(e){
+    perfMsg('Gagal memuat: ' + (e.message || e) + '. Kalau pesannya "Unknown action", deploy ulang Code.gs.');
+  }
+}
+
+/* --- CSV (pemisah titik koma, koma desimal: terbuka rapi di Excel Indonesia) --- */
+function perfCsvEscape(v){
+  const s = String(v == null ? '' : v);
+  return /[;"\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function perfDec(v){
+  if(v === '' || v == null || !isFinite(Number(v))) return '';
+  const n = Number(v);
+  return (Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, '')).replace('.', ',');
+}
+function perfBuildCsv(data, nips){
+  const lines = [['Bulan','NIK','Nama','Line','Style','Proses','Kapasitas 100%','Rata-rata','Efisiensi (%)','Level Skill','Tanggal','Hari tercatat','Catatan'].join(';')];
+  nips.forEach(nip=>{
+    const entry = (data.operators && data.operators[nip]) || { nama: '', months: {} };
+    const opRec = dataOpt.find(o=> String(o['NIP']).trim().toUpperCase() === String(nip).trim().toUpperCase());
+    const nama = (opRec && opRec['NAMA']) || entry.nama || '';
+    data.months.forEach(m=>{
+      const e = entry.months && entry.months[m];
+      const label = perfMonthLabel(m, m === data.currentMonth);
+      const b = e && e.best;
+      const note = perfNote(e, m, data.currentMonth);
+      const cells = b
+        ? [label, b.nip, b.nama, b.line, b.style, b.proses, perfDec(b.smv), perfDec(b.rata), perfDec(Number(b.eff).toFixed(2)), b.level === '' ? '' : b.level, b.tanggal, b.hari, note]
+        : [label, nip, nama, '', '', '', '', '', '', '', '', '', note];
+      lines.push(cells.map(perfCsvEscape).join(';'));
+    });
+  });
+  return lines.join('\r\n');
+}
+function perfDownloadCsv(){
+  if(!perfData || !perfNips.length){ perfMsg('Tampilkan laporan dulu sebelum mengunduh.'); return; }
+  const blob = new Blob(['\ufeff' + perfBuildCsv(perfData, perfNips)], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `performa-operator-${todayStr()}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=> URL.revokeObjectURL(url), 2000);
+}
+
+/* --- cetak: hanya laporan yang tercetak, semua operator dibuka, warna jadi hitam putih --- */
+function perfPrint(){
+  if(!perfData || !perfNips.length){ perfMsg('Tampilkan laporan dulu sebelum mencetak.'); return; }
+  if(perfPrintRestore) perfPrintRestore();
+  const dets = [...document.querySelectorAll('#perfArea details.pf-block')];
+  const wasOpen = dets.map(d=> d.open);
+  dets.forEach(d=> d.open = true);
+  document.body.classList.add('print-perf');
+  let done = false;
+  const restore = ()=>{
+    if(done) return;
+    done = true;
+    document.body.classList.remove('print-perf');
+    [...document.querySelectorAll('#perfArea details.pf-block')].forEach((d,i)=>{ if(i < wasOpen.length) d.open = wasOpen[i]; });
+    window.removeEventListener('afterprint', restore);
+    perfPrintRestore = null;
+  };
+  perfPrintRestore = restore;
+  window.addEventListener('afterprint', restore);
+  setTimeout(restore, 60000);   // cadangan kalau browser tidak mengirim afterprint
+  window.print();
+}
+
+function initPerfTab(){
+  const opts = dataOpt.slice().sort((a,b)=> String(a['NAMA']||'').localeCompare(String(b['NAMA']||''), 'id')).map(o=> `${o['NIP']} - ${o['NAMA']}`);
+  const key = opts.join('|');
+  if(key !== perfOptKey){
+    if(perfOpMS) perfOpMS.destroy();
+    perfOpMS = createMultiSelect('perfOpMS', 'Operator', opts, 'Pilih operator');   // kosong = belum memilih (bukan "semua")
+    perfOptKey = key;
+  }
+  if(!opts.length) perfMsg('Data operator belum dimuat. Buka tab Pengaturan, pastikan URL Apps Script benar, lalu muat ulang.');
+}
+function wirePerfEvents(){
+  perfEl('perfShowBtn').addEventListener('click', perfShow);
+  perfEl('perfCsvBtn').addEventListener('click', perfDownloadCsv);
+  perfEl('perfPrintBtn').addEventListener('click', perfPrint);
+}
+wirePerfEvents();
 
 /* ---------- Persist tampilan terakhir (tab, tanggal, line, pencarian) ---------- */
 function getActiveTab(){
