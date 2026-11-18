@@ -123,6 +123,25 @@
   .cs-table td{padding:4px 6px;border-bottom:1px solid var(--border);vertical-align:top;}
   .cs-note{font-size:11px;color:var(--text-dim);margin-top:6px;line-height:1.5;}
   select.k-pic{min-width:190px;font-size:12px;padding:4px 6px;}
+  /* ---------- Histori Kapasitas: Tren Harian ---------- */
+  .ht-picker{margin:10px 0;}
+  .ht-oplist{max-height:170px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:6px 8px;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:2px 12px;}
+  .ht-op{display:flex;gap:6px;align-items:center;font-size:12px;cursor:pointer;}
+  .ht-legend{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 4px;}
+  .ht-leg{background:var(--panel2);border:1px solid var(--border);border-radius:14px;padding:3px 10px;font-size:12px;color:var(--text);cursor:pointer;display:inline-flex;gap:6px;align-items:center;}
+  .ht-leg.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);}
+  .ht-sw{width:10px;height:10px;border-radius:50%;display:inline-block;}
+  .ht-chart-title{font-weight:700;font-size:14px;margin:14px 0 4px;}
+  .ht-scroll{overflow-x:auto;border:1px solid var(--border);border-radius:8px;background:var(--panel);}
+  .ht-svg{display:block;}
+  .ht-grid{stroke:var(--border);stroke-width:1;}
+  .ht-axis{fill:var(--text-dim);font-size:11px;}
+  .ht-ref{stroke:var(--warn);stroke-width:1.2;stroke-dasharray:5 4;}
+  .ht-refcap{fill:none;stroke-width:1.6;stroke-dasharray:6 4;}
+  .ht-line{fill:none;stroke-linejoin:round;stroke-linecap:round;}
+  .ht-dot{stroke:var(--panel);stroke-width:1.5;}
+  .ht-lbl{font-size:11px;font-weight:700;paint-order:stroke;stroke:var(--panel);stroke-width:3px;stroke-linejoin:round;}
+
   /* ---------- Tab Performa Operator ---------- */
   .pf-chart{margin:6px 0 12px;}
   .pf-chart svg{width:100%;height:auto;display:block;}
@@ -491,6 +510,26 @@
           </table>
         </div>
       </div>
+    </div>
+
+    <div class="panel">
+      <details id="histTrend">
+        <summary class="panel-title" style="cursor:pointer;">📈 Tren Harian: kapasitas dan efisiensi per hari <span class="lh-chip" id="htChip" style="margin-left:8px;">Tampilkan data dulu</span></summary>
+        <div class="panel-body">
+          <div class="hint" style="margin-top:0;">Satu garis untuk tiap operator dan proses (maksimal 8 operator dan 12 garis). Kalau satu proses punya beberapa catatan di hari yang sama, yang dipakai EFF tertingginya. Klik nama di legenda untuk memfokuskan satu garis dan melihat acuan kapasitas 100%-nya.</div>
+          <div class="ht-picker">
+            <div class="row" style="margin-bottom:6px;align-items:center;">
+              <b>Operator di grafik</b><span class="pl-sub" id="htSelCount"></span>
+              <input type="text" id="htSearch" placeholder="Cari operator..." style="max-width:220px;">
+              <button type="button" class="secondary" id="htFirst8">8 pertama</button>
+              <button type="button" class="secondary" id="htClear">Kosongkan</button>
+              <span class="hint" id="htMsg" style="margin:0;"></span>
+            </div>
+            <div class="ht-oplist" id="htOpList"></div>
+          </div>
+          <div id="htCharts"></div>
+        </div>
+      </details>
     </div>
   </div>
 
@@ -3188,6 +3227,8 @@ async function renderHistTabResults(){
   if(rows.length===0){
     tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--text-dim);padding:16px;">Tidak ada data yang cocok dengan filter ini.</td></tr>`;
     msg.textContent = '0 baris ditemukan.';
+    histLastRows = [];
+    histTrendRefresh();
     return;
   }
 
@@ -3245,8 +3286,274 @@ async function renderHistTabResults(){
     `;
   }).join('');
   msg.textContent = `${rows.length} baris ditemukan (urut: Tanggal terlama, lalu ${hasPic ? 'PIC A-Z, lalu ' : ''}Line, lalu Proses A-Z, lalu EFF tertinggi).`;
+  histLastRows = rows;
+  histTrendRefresh();
 }
 document.getElementById('histShowBtn').addEventListener('click', renderHistTabResults);
+
+/* ---------- Histori Kapasitas: Tren Harian (kapasitas dan efisiensi per hari) ---------- */
+const HT_MAX_OPS = 8;
+const HT_MAX_SERIES = 12;
+const HT_COLORS = ['#4d9fff','#f59e0b','#3ecf8e','#ef4444','#a78bfa','#ec4899','#14b8a6','#eab308','#f97316','#84cc16','#06b6d4','#d946ef'];
+let histLastRows = [];       // baris yang sedang tampil di tabel Histori (sudah disaring dan diurutkan)
+let htSel = new Set();       // NIP (huruf besar) operator yang digambar
+let htFocus = '';            // id garis yang difokuskan lewat legenda
+let htSearch = '';
+let htDirty = true;          // hasil baru belum digambar (panel tertutup)
+
+function htEl(id){ return document.getElementById(id); }
+function htNum(v){ if(v === '' || v == null) return null; const n = Number(v); return isFinite(n) ? n : null; }
+function htFmt(v){ const r = Math.round(v * 10) / 10; return Number.isInteger(r) ? String(r) : r.toFixed(1); }
+function htDay(d){ return `${d.slice(8,10)}/${d.slice(5,7)}`; }
+function htMsg(t){ const el = htEl('htMsg'); if(el) el.textContent = t || ''; }
+function htOperators(rows){
+  const m = new Map();
+  rows.forEach(r=>{
+    const nip = String(r['NO. ABSEN'] || '').trim();
+    if(!nip) return;
+    const k = nip.toUpperCase();
+    if(!m.has(k)) m.set(k, { nip, nama: String(r['NAMA'] || '').trim() });
+  });
+  return [...m.values()].sort((a,b)=> a.nama.localeCompare(b.nama, 'id') || a.nip.localeCompare(b.nip));
+}
+// Pilihan dipertahankan selama operatornya masih ada di hasil baru; kalau tidak ada lagi, 8 pertama (urut nama)
+function htSyncSel(ops){
+  const avail = new Set(ops.map(o=> o.nip.toUpperCase()));
+  const keep = [...htSel].filter(k=> avail.has(k)).slice(0, HT_MAX_OPS);
+  htSel = keep.length ? new Set(keep) : new Set(ops.slice(0, HT_MAX_OPS).map(o=> o.nip.toUpperCase()));
+}
+
+/* --- menyusun garis: satu garis per operator x proses, satu titik per hari (EFF tertinggi) --- */
+function htBuildSeries(rows){
+  const map = new Map();
+  rows.forEach(r=>{
+    const nip = String(r['NO. ABSEN'] || '').trim();
+    if(!htSel.has(nip.toUpperCase())) return;
+    const date = String(r['TANGGAL'] || '').slice(0, 10);
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+    const eff = htNum(r['EFF']), rata = htNum(r['RATA-RATA']);
+    if(eff === null && rata === null) return;
+    const proses = String(r['PROSES'] || '').trim();
+    const id = nip.toUpperCase() + '||' + proses.toUpperCase();
+    let s = map.get(id);
+    if(!s){ s = { id, nip, nama: String(r['NAMA'] || '').trim(), proses, points: new Map() }; map.set(id, s); }
+    let cap = null; try{ cap = htNum(lookupSmv(r['STYLE'], r['PROSES'])); }catch(e){}
+    const cand = { date, eff, rata, style: String(r['STYLE'] || '').trim(), line: String(r['LINE'] || '').trim(), cap };
+    const cur = s.points.get(date);
+    if(!cur || (cand.eff !== null && (cur.eff === null || cand.eff > cur.eff))) s.points.set(date, cand);
+  });
+  let all = [...map.values()];
+  const total = all.length;
+  if(total > HT_MAX_SERIES){
+    all.sort((a,b)=> b.points.size - a.points.size || a.nama.localeCompare(b.nama, 'id') || a.proses.localeCompare(b.proses, 'id'));
+    all = all.slice(0, HT_MAX_SERIES);
+  }
+  all.sort((a,b)=> a.nama.localeCompare(b.nama, 'id') || a.proses.localeCompare(b.proses, 'id'));
+  all.forEach((s,i)=>{ s.color = HT_COLORS[i]; });
+  const dates = [...new Set(all.flatMap(s=> [...s.points.keys()]))].sort();
+  return { series: all, dates, hidden: total - all.length };
+}
+
+/* --- grafik SVG --- */
+function htNiceStep(x){
+  const mag = Math.pow(10, Math.floor(Math.log10(x)));
+  for(const c of [1, 2, 2.5, 5, 10]) if(c * mag >= x) return c * mag;
+  return 10 * mag;
+}
+// Susun posisi label vertikal supaya tidak saling menimpa (ys sudah urut naik)
+function htSpread(ys, lo, hi, gap){
+  const out = ys.slice();
+  for(let k = 1; k < out.length; k++) if(out[k] - out[k-1] < gap) out[k] = out[k-1] + gap;
+  if(out.length && out[out.length - 1] > hi){
+    out[out.length - 1] = hi;
+    for(let k = out.length - 2; k >= 0; k--) if(out[k+1] - out[k] < gap) out[k] = out[k+1] - gap;
+  }
+  if(out.length && out[0] < lo){
+    out[0] = lo;
+    for(let k = 1; k < out.length; k++) if(out[k] - out[k-1] < gap) out[k] = out[k-1] + gap;
+  }
+  return out;
+}
+function htChartSvg(kind, data){
+  const { series, dates } = data;
+  const focus = htFocus;
+  const n = Math.max(dates.length, 1);
+  const padL = 60, padR = 66, padT = 30, padB = 46;
+  const slot = Math.max(68, Math.ceil((980 - padL - padR) / n));
+  const W = padL + padR + slot * n, H = 400;
+  const val = p => kind === 'eff' ? p.eff : p.rata;
+  // Acuan kapasitas 100%: semua garis kalau 3 atau kurang; selain itu hanya garis yang difokuskan
+  const refSeries = kind === 'kap' ? (focus ? series.filter(s=> s.id === focus) : (series.length <= 3 ? series : [])) : [];
+  let vmax = kind === 'eff' ? 100 : 0;
+  series.forEach(s=> s.points.forEach(p=>{ const v = val(p); if(v !== null && v > vmax) vmax = v; }));
+  refSeries.forEach(s=> s.points.forEach(p=>{ if(p.cap && p.cap > vmax) vmax = p.cap; }));
+  if(vmax <= 0) vmax = 1;
+  const step = htNiceStep(vmax * 1.15 / 5);
+  const top = step * Math.ceil(vmax * 1.1 / step);
+  const x = i => padL + slot * (i + 0.5);
+  const y = v => padT + (H - padT - padB) * (1 - v / top);
+  let svg = `<svg class="ht-svg" viewBox="0 0 ${W} ${H}" style="width:100%;min-width:${W}px;height:auto;" role="img" aria-label="${kind === 'eff' ? 'Tren efisiensi per hari' : 'Tren kapasitas per hari'}">`;
+  for(let t = 0; t <= top + 1e-9; t += step){
+    svg += `<line class="ht-grid" x1="${padL}" x2="${W - padR}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}"></line><text class="ht-axis" x="${padL - 6}" y="${(y(t) + 4).toFixed(1)}" text-anchor="end">${htFmt(t)}${kind === 'eff' ? '%' : ''}</text>`;
+  }
+  dates.forEach((d,i)=>{ svg += `<text class="ht-axis" x="${x(i).toFixed(1)}" y="${H - padB + 20}" text-anchor="middle">${htDay(d)}</text>`; });
+  if(kind === 'eff'){
+    svg += `<line class="ht-ref" x1="${padL}" x2="${W - padR}" y1="${y(100).toFixed(1)}" y2="${y(100).toFixed(1)}"></line><text class="ht-axis" x="${W - padR + 6}" y="${(y(100) + 4).toFixed(1)}" style="fill:var(--warn);">100%</text>`;
+  }
+  // garis acuan kapasitas 100% (putus-putus, warna sama dengan garisnya)
+  const refLabels = [];
+  refSeries.forEach(s=>{
+    let cur = [];
+    const segs = [];
+    dates.forEach((d,i)=>{ const p = s.points.get(d); if(p && p.cap){ cur.push({ i, cap: p.cap }); } else { if(cur.length) segs.push(cur); cur = []; } });
+    if(cur.length) segs.push(cur);
+    segs.forEach(sg=>{
+      const pts = sg.length > 1 ? sg.map(q=> [x(q.i), y(q.cap)]) : [[x(sg[0].i) - slot * 0.35, y(sg[0].cap)], [x(sg[0].i) + slot * 0.35, y(sg[0].cap)]];
+      svg += `<path class="ht-refcap" data-ref="${rdEsc(s.id)}" d="${pts.map((q,k)=> (k ? 'L' : 'M') + q[0].toFixed(1) + ' ' + q[1].toFixed(1)).join(' ')}" stroke="${s.color}" opacity="0.9"><title>Acuan 100%: ${rdEsc(s.nama)} · ${rdEsc(s.proses)}</title></path>`;
+    });
+    const last = segs.length ? segs[segs.length - 1] : null;
+    if(last) refLabels.push({ color: s.color, y0: y(last[last.length - 1].cap) + 4, text: htFmt(last[last.length - 1].cap) });
+  });
+  refLabels.sort((a,b)=> a.y0 - b.y0);
+  const ry = htSpread(refLabels.map(l=> l.y0), padT, H - padB, 12);
+  refLabels.forEach((l,k)=>{ svg += `<text class="ht-axis" x="${W - padR + 6}" y="${ry[k].toFixed(1)}" style="fill:${l.color};font-weight:700;">${l.text}</text>`; });
+  // garis dan titik (garis yang difokuskan digambar paling akhir)
+  const ordered = focus ? series.filter(s=> s.id !== focus).concat(series.filter(s=> s.id === focus)) : series;
+  ordered.forEach(s=>{
+    const dim = !!focus && s.id !== focus;
+    const segs = []; let cur = [];
+    dates.forEach((d,i)=>{
+      const p = s.points.get(d); const v = p ? val(p) : null;
+      if(v === null){ if(cur.length) segs.push(cur); cur = []; } else cur.push({ i, v, p });
+    });
+    if(cur.length) segs.push(cur);
+    segs.forEach(sg=>{
+      if(sg.length > 1) svg += `<path class="ht-line" data-sid="${rdEsc(s.id)}" d="${sg.map((q,k)=> (k ? 'L' : 'M') + x(q.i).toFixed(1) + ' ' + y(q.v).toFixed(1)).join(' ')}" stroke="${s.color}" stroke-width="${focus === s.id ? 3.4 : 2.2}" opacity="${dim ? 0.18 : 1}"></path>`;
+    });
+    segs.forEach(sg=> sg.forEach(q=>{
+      const p = q.p;
+      const tip = `${s.nama} · ${s.proses || '(tanpa proses)'}\n${p.date}\nStyle: ${p.style || '-'} · Line: ${p.line || '-'}\nKapasitas: ${p.rata !== null ? htFmt(p.rata) : '-'}${p.cap ? ` (acuan 100%: ${htFmt(p.cap)})` : ''}\nEFF: ${p.eff !== null ? p.eff.toFixed(1) + '%' : '-'}`;
+      svg += `<circle class="ht-dot" data-sid="${rdEsc(s.id)}" cx="${x(q.i).toFixed(1)}" cy="${y(q.v).toFixed(1)}" r="${focus === s.id ? 5.8 : 4.6}" fill="${s.color}" opacity="${dim ? 0.25 : 1}"><title>${rdEsc(tip)}</title></circle>`;
+    }));
+  });
+  // angka di setiap titik (per tanggal disusun agar tidak saling menimpa; saat ada fokus hanya garis fokus)
+  dates.forEach((d,i)=>{
+    const items = [];
+    series.forEach(s=>{
+      if(focus && s.id !== focus) return;
+      const p = s.points.get(d); const v = p ? val(p) : null;
+      if(v !== null) items.push({ s, v, y0: y(v) - 9 });
+    });
+    items.sort((a,b)=> a.y0 - b.y0);
+    const ys = htSpread(items.map(it=> it.y0), padT - 6, H - padB - 6, 12);
+    items.forEach((it,k)=>{
+      svg += `<text class="ht-lbl" data-sid="${rdEsc(it.s.id)}" x="${x(i).toFixed(1)}" y="${ys[k].toFixed(1)}" text-anchor="middle" fill="${it.s.color}">${kind === 'eff' ? it.v.toFixed(1) + '%' : htFmt(it.v)}</text>`;
+    });
+  });
+  return svg + '</svg>';
+}
+
+/* --- legenda dan ringkasan per garis --- */
+function htLegendHtml(data){
+  return '<div class="ht-legend">' + data.series.map(s=>
+    `<button type="button" class="ht-leg${htFocus === s.id ? ' on' : ''}" data-sid="${rdEsc(s.id)}" title="Klik untuk memfokuskan garis ini"><span class="ht-sw" style="background:${s.color}"></span>${rdEsc(s.nama)} · ${rdEsc(s.proses || '(tanpa proses)')}</button>`).join('')
+    + (htFocus ? '<button type="button" class="ht-leg" data-sid="">✕ Lepas fokus</button>' : '') + '</div>';
+}
+function htStats(s){
+  const pts = [...s.points.values()].sort((a,b)=> a.date.localeCompare(b.date));
+  const effs = pts.map(p=> p.eff).filter(v=> v !== null), rat = pts.map(p=> p.rata).filter(v=> v !== null);
+  const mean = a => a.length ? a.reduce((p,q)=> p + q, 0) / a.length : null;
+  const caps = [...new Set(pts.map(p=> p.cap).filter(Boolean))].sort((a,b)=> a - b);
+  let trend = '-';
+  if(effs.length >= 4){
+    const h = Math.floor(effs.length / 2);
+    const d = mean(effs.slice(-h)) - mean(effs.slice(0, h));
+    trend = d >= 3 ? '↑ naik' : (d <= -3 ? '↓ turun' : '→ stabil');
+  }
+  return { hari: pts.length, kap: mean(rat), effAvg: mean(effs), effMax: effs.length ? Math.max(...effs) : null, effMin: effs.length ? Math.min(...effs) : null,
+           cap: caps.length ? (caps.length === 1 ? htFmt(caps[0]) : htFmt(caps[0]) + ' - ' + htFmt(caps[caps.length - 1])) : '-', trend };
+}
+function htSummaryHtml(data){
+  const pc = v => v === null ? '-' : v.toFixed(1) + '%';
+  return `<div class="ht-chart-title">Ringkasan per garis</div><div style="overflow-x:auto;"><table class="pf-table"><thead><tr><th>Garis</th><th style="text-align:center;">Hari</th><th style="text-align:right;">Kapasitas rata-rata</th><th style="text-align:right;">Acuan 100%</th><th style="text-align:right;">EFF rata-rata</th><th style="text-align:right;">EFF tertinggi</th><th style="text-align:right;">EFF terendah</th><th>Tren EFF</th></tr></thead><tbody>`
+    + data.series.map(s=>{
+      const st = htStats(s);
+      return `<tr><td><span class="ht-sw" style="background:${s.color}"></span> ${rdEsc(s.nama)} · ${rdEsc(s.proses || '(tanpa proses)')}</td><td style="text-align:center;">${st.hari}</td><td style="text-align:right;">${st.kap === null ? '-' : htFmt(st.kap)}</td><td style="text-align:right;">${st.cap}</td><td style="text-align:right;">${pc(st.effAvg)}</td><td style="text-align:right;">${pc(st.effMax)}</td><td style="text-align:right;">${pc(st.effMin)}</td><td>${st.trend}</td></tr>`;
+    }).join('') + '</tbody></table></div>';
+}
+
+/* --- menggambar --- */
+function htRenderCharts(){
+  const box = htEl('htCharts');
+  if(!histLastRows.length){ box.innerHTML = '<div class="hint">Tampilkan data di atas dulu, lalu grafik tren muncul di sini.</div>'; return; }
+  if(!htSel.size){ box.innerHTML = '<div class="hint">Centang minimal satu operator untuk menggambar grafik.</div>'; return; }
+  const data = htBuildSeries(histLastRows);
+  if(!data.series.length){ box.innerHTML = '<div class="hint">Operator yang dipilih tidak punya data kapasitas atau EFF pada hasil ini.</div>'; return; }
+  if(htFocus && !data.series.some(s=> s.id === htFocus)) htFocus = '';
+  const notes = [];
+  const nOps = htOperators(histLastRows).length;
+  if(nOps > HT_MAX_OPS) notes.push(`Menampilkan ${htSel.size} dari ${nOps} operator di hasil; ganti pilihan di daftar centang di atas.`);
+  if(data.hidden) notes.push(`${data.hidden} garis tidak digambar (maksimal ${HT_MAX_SERIES}; yang dipakai yang hari datanya terbanyak). Persempit filter Proses atau kurangi operator.`);
+  const kapHint = (!htFocus && data.series.length > 3) ? '<div class="hint" style="margin:0 0 4px;">Garis acuan kapasitas 100% muncul untuk satu garis saat namanya diklik di legenda.</div>' : '';
+  box.innerHTML = (notes.length ? `<div class="hint">${notes.map(rdEsc).join(' ')}</div>` : '')
+    + htLegendHtml(data)
+    + `<div class="ht-chart-title">Kapasitas per hari (rata-rata)</div>${kapHint}<div class="ht-scroll">${htChartSvg('kap', data)}</div>`
+    + `<div class="ht-chart-title">Efisiensi per hari (%)</div><div class="ht-scroll">${htChartSvg('eff', data)}</div>`
+    + htSummaryHtml(data);
+}
+function htUpdateCount(){
+  const ops = htOperators(histLastRows);
+  const el = htEl('htSelCount');
+  if(el) el.textContent = ` ${htSel.size} dari maksimal ${HT_MAX_OPS} dipilih · ${ops.length} operator di hasil`;
+}
+function htRenderPicker(){
+  const ops = htOperators(histLastRows);
+  const q = htSearch.trim().toLowerCase();
+  htEl('htOpList').innerHTML = ops.filter(o=> !q || (o.nip + ' ' + o.nama).toLowerCase().includes(q)).map(o=>
+    `<label class="ht-op"><input type="checkbox" data-nip="${rdEsc(o.nip.toUpperCase())}"${htSel.has(o.nip.toUpperCase()) ? ' checked' : ''}> ${rdEsc(o.nama)} <span class="pl-sub">${rdEsc(o.nip)}</span></label>`).join('')
+    || '<span class="pl-sub">Tidak ada operator yang cocok.</span>';
+  htUpdateCount();
+}
+// Dipanggil setiap hasil Histori berubah. Menggambar hanya kalau panel terbuka (hemat kerja kalau tidak dipakai).
+function histTrendRefresh(){
+  const chip = htEl('htChip');
+  if(!chip) return;
+  const ops = htOperators(histLastRows);
+  chip.textContent = histLastRows.length ? `${ops.length} operator di hasil` : 'Tampilkan data dulu';
+  htSyncSel(ops);
+  htMsg('');
+  htDirty = true;
+  if(htEl('histTrend').open) htDrawAll();
+}
+function htDrawAll(){ htDirty = false; htRenderPicker(); htRenderCharts(); }
+
+function wireHistTrend(){
+  htEl('histTrend').addEventListener('toggle', ()=>{ if(htEl('histTrend').open && htDirty) htDrawAll(); });
+  htEl('htSearch').addEventListener('input', e=>{ htSearch = e.target.value; htRenderPicker(); });
+  htEl('htOpList').addEventListener('change', e=>{
+    const cb = e.target.closest ? e.target.closest('input[data-nip]') : null;
+    if(!cb) return;
+    const k = cb.dataset.nip;
+    if(cb.checked){
+      if(htSel.size >= HT_MAX_OPS){ cb.checked = false; htMsg(`Maksimal ${HT_MAX_OPS} operator di grafik. Hapus centang salah satu dulu.`); return; }
+      htSel.add(k);
+    } else htSel.delete(k);
+    htMsg('');
+    htUpdateCount();
+    htRenderCharts();
+  });
+  htEl('htFirst8').addEventListener('click', ()=>{ htSel = new Set(htOperators(histLastRows).slice(0, HT_MAX_OPS).map(o=> o.nip.toUpperCase())); htMsg(''); htRenderPicker(); htRenderCharts(); });
+  htEl('htClear').addEventListener('click', ()=>{ htSel = new Set(); htFocus = ''; htMsg(''); htRenderPicker(); htRenderCharts(); });
+  htEl('htCharts').addEventListener('click', e=>{
+    const b = e.target.closest ? e.target.closest('button.ht-leg') : null;
+    if(!b) return;
+    const sid = b.dataset.sid || '';
+    htFocus = (sid === '' || sid === htFocus) ? '' : sid;
+    htRenderCharts();
+  });
+}
+wireHistTrend();
+
 
 /* ---------- Tab: Dashboard Tren WIP ---------- */
 let wipLineMS = null;
