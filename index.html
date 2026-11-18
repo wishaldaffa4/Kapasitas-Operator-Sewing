@@ -516,7 +516,7 @@
       <details id="histTrend">
         <summary class="panel-title" style="cursor:pointer;">📈 Tren Harian: kapasitas dan efisiensi per hari <span class="lh-chip" id="htChip" style="margin-left:8px;">Tampilkan data dulu</span></summary>
         <div class="panel-body">
-          <div class="hint" style="margin-top:0;">Satu garis untuk tiap operator dan proses (maksimal 8 operator dan 12 garis). Kalau satu proses punya beberapa catatan di hari yang sama, yang dipakai EFF tertingginya. Pilih satu proses di "Proses di grafik" untuk membandingkan operator pada proses yang sama (satu skala, satu acuan 100%). Klik nama di legenda untuk memfokuskan satu garis dan melihat acuan kapasitas 100%-nya.</div>
+          <div class="hint" style="margin-top:0;">Satu garis untuk tiap operator dan proses (maksimal 8 operator dan 12 garis). Kalau satu proses punya beberapa catatan di hari yang sama, yang dipakai EFF tertingginya. Pilih proses di "Proses di grafik" (diambil dari seluruh data hasil di atas) untuk langsung melihat operator yang menjalankan proses itu, 8 dengan hari data terbanyak, tanpa memilih operator satu per satu (satu skala, satu acuan 100%). Klik nama di legenda untuk memfokuskan satu garis dan melihat acuan kapasitas 100%-nya.</div>
           <div class="ht-picker">
             <div class="row" style="margin-bottom:6px;align-items:center;">
               <b>Operator di grafik</b><span class="pl-sub" id="htSelCount"></span>
@@ -3302,9 +3302,12 @@ let htSel = new Set();       // NIP (huruf besar) operator yang digambar
 let htFocus = '';            // id garis yang difokuskan lewat legenda
 let htSearch = '';
 let htDirty = true;          // hasil baru belum digambar (panel tertutup)
-let htProsesMode = 'auto';   // 'auto' (semua proses; kalau garis > 12 pakai proses dengan operator terbanyak) | 'all' | 'one'
+let htProsesMode = 'all';    // 'all' = semua proses | 'one' = satu proses (htProsesKey)
 let htProsesKey = '';        // kunci proses saat mode 'one'
 let htProsesSig = '';        // penanda isi daftar proses (agar daftar tidak digambar ulang tanpa perlu)
+let htTouched = false;       // pengguna sudah mengubah proses/operator sendiri; kalau belum, tampilan awal dihitung otomatis
+let htAutoNote = '';         // alasan tampilan awal otomatis
+let htIdx = new Map();       // indeks proses dari SEMUA baris hasil Histori: kunci -> { label, ops: Map(NIP -> { nip, nama, dates }) }
 
 function htEl(id){ return document.getElementById(id); }
 function htNum(v){ if(v === '' || v == null) return null; const n = Number(v); return isFinite(n) ? n : null; }
@@ -3321,15 +3324,73 @@ function htOperators(rows){
   });
   return [...m.values()].sort((a,b)=> a.nama.localeCompare(b.nama, 'id') || a.nip.localeCompare(b.nip));
 }
-// Pilihan dipertahankan selama operatornya masih ada di hasil baru; kalau tidak ada lagi, 8 pertama (urut nama)
-function htSyncSel(ops){
-  const avail = new Set(ops.map(o=> o.nip.toUpperCase()));
+/* --- indeks proses dari SEMUA baris hasil (bukan hanya operator yang dicentang) --- */
+function htPKey(p){ return String(p || '').trim().toUpperCase() || '(TANPA PROSES)'; }
+function htProsesIndex(rows){
+  const m = new Map();
+  rows.forEach(r=>{
+    const nip = String(r['NO. ABSEN'] || '').trim();
+    if(!nip) return;
+    const date = String(r['TANGGAL'] || '').slice(0, 10);
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+    if(htNum(r['EFF']) === null && htNum(r['RATA-RATA']) === null) return;
+    const proses = String(r['PROSES'] || '').trim();
+    const key = htPKey(proses);
+    let p = m.get(key);
+    if(!p){ p = { key, label: proses || '(tanpa proses)', ops: new Map() }; m.set(key, p); }
+    const k = nip.toUpperCase();
+    let o = p.ops.get(k);
+    if(!o){ o = { nip, nama: String(r['NAMA'] || '').trim(), dates: new Set() }; p.ops.set(k, o); }
+    o.dates.add(date);
+  });
+  return m;
+}
+// Daftar proses: operator terbanyak dulu, lalu hari data terbanyak, lalu nama
+function htProsesList(idx){
+  return [...idx.values()].map(p=> ({ key: p.key, label: p.label, nOps: p.ops.size, days: [...p.ops.values()].reduce((a,o)=> a + o.dates.size, 0) }))
+    .sort((a,b)=> b.nOps - a.nOps || b.days - a.days || a.label.localeCompare(b.label, 'id'));
+}
+// Operator sebuah proses dengan hari data terbanyak (seri: nama)
+function htTopOpsOf(idx, key, n){
+  const p = idx.get(key);
+  if(!p) return [];
+  return [...p.ops.entries()].sort((a,b)=> b[1].dates.size - a[1].dates.size || a[1].nama.localeCompare(b[1].nama, 'id')).slice(0, n).map(e=> e[0]);
+}
+function htFirstByName(n){ return htOperators(histLastRows).slice(0, n).map(o=> o.nip.toUpperCase()); }
+// Tampilan awal tanpa perlu memilih apa pun:
+// - 8 operator atau kurang: semua operator; kalau garisnya lebih dari 12, pakai proses dengan operator terbanyak
+// - lebih dari 8 operator: proses dengan operator terbanyak, dengan 8 operator yang hari datanya terbanyak
+function htApplyDefaults(){
+  const ops = htOperators(histLastRows);
+  const list = htProsesList(htIdx);
+  htAutoNote = '';
+  htProsesMode = 'all'; htProsesKey = '';
+  if(!list.length){ htSel = new Set(htFirstByName(HT_MAX_OPS)); return; }
+  if(ops.length <= HT_MAX_OPS){
+    htSel = new Set(ops.map(o=> o.nip.toUpperCase()));
+    const lines = list.reduce((a,p)=> a + p.nOps, 0);
+    if(lines > HT_MAX_SERIES){
+      htProsesMode = 'one'; htProsesKey = list[0].key;
+      htAutoNote = `Ada ${lines} garis (lebih dari ${HT_MAX_SERIES}), jadi yang ditampilkan proses ${list[0].label} yang paling banyak operatornya (${list[0].nOps} operator). Pilih proses lain atau "Semua proses" di daftar "Proses di grafik".`;
+    }
+  } else {
+    htProsesMode = 'one'; htProsesKey = list[0].key;
+    htSel = new Set(htTopOpsOf(htIdx, list[0].key, HT_MAX_OPS));
+    htAutoNote = `Hasil memuat ${ops.length} operator, jadi yang ditampilkan proses ${list[0].label} (paling banyak operatornya: ${list[0].nOps}) dengan ${htSel.size} operator yang hari datanya terbanyak. Ganti lewat "Proses di grafik" atau daftar centang di atas.`;
+  }
+}
+// Hasil baru: tampilan awal dihitung ulang kalau pengguna belum memilih; kalau sudah, pilihannya dipertahankan selama masih berlaku
+function htReconcile(){
+  const ops = htOperators(histLastRows);
+  if(!ops.length){ htSel = new Set(); htAutoNote = ''; return; }
+  if(!htTouched){ htApplyDefaults(); return; }
+  if(htProsesMode === 'one' && !htIdx.has(htProsesKey)){ htTouched = false; htApplyDefaults(); return; }
+  const avail = htProsesMode === 'one' ? new Set(htIdx.get(htProsesKey).ops.keys()) : new Set(ops.map(o=> o.nip.toUpperCase()));
   const keep = [...htSel].filter(k=> avail.has(k)).slice(0, HT_MAX_OPS);
-  htSel = keep.length ? new Set(keep) : new Set(ops.slice(0, HT_MAX_OPS).map(o=> o.nip.toUpperCase()));
+  htSel = keep.length ? new Set(keep) : (htProsesMode === 'one' ? new Set(htTopOpsOf(htIdx, htProsesKey, HT_MAX_OPS)) : new Set(htFirstByName(HT_MAX_OPS)));
 }
 
 /* --- menyusun garis: satu garis per operator x proses, satu titik per hari (EFF tertinggi) --- */
-function htPKey(p){ return String(p || '').trim().toUpperCase() || '(TANPA PROSES)'; }
 function htScanSeries(rows){
   const map = new Map();
   rows.forEach(r=>{
@@ -3350,31 +3411,11 @@ function htScanSeries(rows){
   });
   return map;
 }
-// Daftar proses dari operator yang dipilih: urut operator terbanyak, lalu hari data terbanyak, lalu nama
-function htProsesOptions(map){
-  const m = new Map();
-  map.forEach(s=>{
-    let o = m.get(s.pkey);
-    if(!o){ o = { key: s.pkey, label: s.proses || '(tanpa proses)', ops: new Set(), days: 0 }; m.set(s.pkey, o); }
-    o.ops.add(s.nip.toUpperCase());
-    o.days += s.points.size;
-  });
-  return [...m.values()].sort((a,b)=> b.ops.size - a.ops.size || b.days - a.days || a.label.localeCompare(b.label, 'id'));
-}
-// Proses yang digambar. Otomatis: semua proses bila garis tidak lebih dari 12, selain itu proses dengan operator terbanyak.
-function htResolveProses(map, opts){
-  const keys = new Set(opts.map(o=> o.key));
-  if(htProsesMode === 'one' && !keys.has(htProsesKey)) htProsesMode = 'auto';   // proses pilihan sudah tidak ada: kembali otomatis
-  if(htProsesMode === 'all') return { key: '', auto: false };
-  if(htProsesMode === 'one') return { key: htProsesKey, auto: false };
-  if(map.size <= HT_MAX_SERIES || opts.length <= 1) return { key: '', auto: false };
-  return { key: opts[0].key, auto: true };
-}
 function htBuildSeries(rows){
   const map = htScanSeries(rows);
-  const opts = htProsesOptions(map);
-  const res = htResolveProses(map, opts);
-  let all = [...map.values()].filter(s=> !res.key || s.pkey === res.key);
+  const opts = htProsesList(htIdx);
+  const key = htProsesMode === 'one' ? htProsesKey : '';
+  let all = [...map.values()].filter(s=> !key || s.pkey === key);
   const total = all.length;
   if(total > HT_MAX_SERIES){
     all.sort((a,b)=> b.points.size - a.points.size || a.nama.localeCompare(b.nama, 'id') || a.proses.localeCompare(b.proses, 'id'));
@@ -3383,7 +3424,7 @@ function htBuildSeries(rows){
   all.sort((a,b)=> a.nama.localeCompare(b.nama, 'id') || a.proses.localeCompare(b.proses, 'id'));
   all.forEach((s,i)=>{ s.color = HT_COLORS[i]; });
   const dates = [...new Set(all.flatMap(s=> [...s.points.keys()]))].sort();
-  return { series: all, dates, hidden: total - all.length, opts, key: res.key, auto: res.auto, totalAll: map.size, single: !!res.key };
+  return { series: all, dates, hidden: total - all.length, opts, key, single: !!key };
 }
 // Nama garis: kalau hanya satu proses yang digambar, cukup nama operator
 function htSeriesLabel(s, data){ return data && data.single ? s.nama : `${s.nama} · ${s.proses || '(tanpa proses)'}`; }
@@ -3538,10 +3579,10 @@ function htSummaryHtml(data){
 function htRenderProsesSelect(opts, value, disabled){
   const sel = htEl('htProses');
   if(!sel) return;
-  const sig = JSON.stringify([opts.map(o=> [o.key, o.label, o.ops.size]), value, !!disabled]);
+  const sig = JSON.stringify([opts.map(o=> [o.key, o.label, o.nOps]), value, !!disabled]);
   if(sig === htProsesSig) return;
   htProsesSig = sig;
-  sel.innerHTML = '<option value="">Semua proses</option>' + opts.map(o=> `<option value="${rdEsc(o.key)}">${rdEsc(o.label)} (${o.ops.size} operator)</option>`).join('');
+  sel.innerHTML = '<option value="">Semua proses</option>' + opts.map(o=> `<option value="${rdEsc(o.key)}">${rdEsc(o.label)} (${o.nOps} operator)</option>`).join('');
   sel.value = value;
   sel.disabled = !!disabled;
 }
@@ -3555,39 +3596,45 @@ function htRenderCharts(){
   if(htFocus && !data.series.some(s=> s.id === htFocus)) htFocus = '';
   const notes = [];
   const nOps = htOperators(histLastRows).length;
-  if(nOps > HT_MAX_OPS) notes.push(`Menampilkan ${htSel.size} dari ${nOps} operator di hasil; ganti pilihan di daftar centang di atas.`);
-  if(data.auto){
-    const o = data.opts[0];
-    notes.push(`Ada ${data.totalAll} garis (lebih dari ${HT_MAX_SERIES}), jadi yang ditampilkan proses ${o.label} yang paling banyak operatornya (${o.ops.size} operator). Pilih proses lain atau "Semua proses" di daftar "Proses di grafik".`);
-  }
+  const curP = data.key ? data.opts.find(o=> o.key === data.key) : null;
+  if(!htTouched && htAutoNote) notes.push(htAutoNote);
+  if(curP && curP.nOps > htSel.size) notes.push(`Menampilkan ${htSel.size} dari ${curP.nOps} operator yang menjalankan proses ${curP.label}; ganti pilihan di daftar centang di atas.`);
+  else if(!curP && nOps > HT_MAX_OPS) notes.push(`Menampilkan ${htSel.size} dari ${nOps} operator di hasil; ganti pilihan di daftar centang di atas.`);
   if(data.hidden) notes.push(`${data.hidden} garis tidak digambar (maksimal ${HT_MAX_SERIES}; yang dipakai yang hari datanya terbanyak). Pilih satu proses di daftar "Proses di grafik" atau kurangi operator.`);
   const kapHint = (!htFocus && data.series.length > 3) ? '<div class="hint" style="margin:0 0 4px;">Garis acuan kapasitas 100% muncul untuk satu garis saat namanya diklik di legenda.</div>' : '';
   box.innerHTML = (notes.length ? `<div class="hint">${notes.map(rdEsc).join(' ')}</div>` : '')
     + htLegendHtml(data)
-    + `<div class="ht-chart-title">Kapasitas per hari (rata-rata)${data.key ? ' · ' + rdEsc(data.opts.find(o=> o.key === data.key).label) : ''}</div>${kapHint}<div class="ht-scroll">${htChartSvg('kap', data)}</div>`
-    + `<div class="ht-chart-title">Efisiensi per hari (%)${data.key ? ' · ' + rdEsc(data.opts.find(o=> o.key === data.key).label) : ''}</div><div class="ht-scroll">${htChartSvg('eff', data)}</div>`
+    + `<div class="ht-chart-title">Kapasitas per hari (rata-rata)${curP ? ' · ' + rdEsc(curP.label) : ''}</div>${kapHint}<div class="ht-scroll">${htChartSvg('kap', data)}</div>`
+    + `<div class="ht-chart-title">Efisiensi per hari (%)${curP ? ' · ' + rdEsc(curP.label) : ''}</div><div class="ht-scroll">${htChartSvg('eff', data)}</div>`
     + htSummaryHtml(data);
 }
+// Operator yang bisa dicentang: semua operator hasil, atau (saat satu proses dipilih) hanya operator proses itu, urut hari data terbanyak
+function htPickerOps(){
+  if(htProsesMode !== 'one' || !htIdx.has(htProsesKey)) return htOperators(histLastRows).map(o=> ({ nip: o.nip, nama: o.nama, days: 0 }));
+  return [...htIdx.get(htProsesKey).ops.values()].map(o=> ({ nip: o.nip, nama: o.nama, days: o.dates.size }))
+    .sort((a,b)=> b.days - a.days || a.nama.localeCompare(b.nama, 'id') || a.nip.localeCompare(b.nip));
+}
 function htUpdateCount(){
-  const ops = htOperators(histLastRows);
   const el = htEl('htSelCount');
-  if(el) el.textContent = ` ${htSel.size} dari maksimal ${HT_MAX_OPS} dipilih · ${ops.length} operator di hasil`;
+  if(el) el.textContent = ` ${htSel.size} dari maksimal ${HT_MAX_OPS} dipilih · ${htPickerOps().length} operator ${htProsesMode === 'one' ? 'menjalankan proses ini' : 'di hasil'}`;
 }
 function htRenderPicker(){
-  const ops = htOperators(histLastRows);
+  const ops = htPickerOps();
   const q = htSearch.trim().toLowerCase();
   htEl('htOpList').innerHTML = ops.filter(o=> !q || (o.nip + ' ' + o.nama).toLowerCase().includes(q)).map(o=>
-    `<label class="ht-op"><input type="checkbox" data-nip="${rdEsc(o.nip.toUpperCase())}"${htSel.has(o.nip.toUpperCase()) ? ' checked' : ''}> ${rdEsc(o.nama)} <span class="pl-sub">${rdEsc(o.nip)}</span></label>`).join('')
+    `<label class="ht-op"><input type="checkbox" data-nip="${rdEsc(o.nip.toUpperCase())}"${htSel.has(o.nip.toUpperCase()) ? ' checked' : ''}> ${rdEsc(o.nama)} <span class="pl-sub">${rdEsc(o.nip)}${o.days ? ' · ' + o.days + ' hari' : ''}</span></label>`).join('')
     || '<span class="pl-sub">Tidak ada operator yang cocok.</span>';
+  htEl('htFirst8').textContent = htProsesMode === 'one' ? '8 data terbanyak' : '8 pertama';
   htUpdateCount();
 }
 // Dipanggil setiap hasil Histori berubah. Menggambar hanya kalau panel terbuka (hemat kerja kalau tidak dipakai).
 function histTrendRefresh(){
   const chip = htEl('htChip');
   if(!chip) return;
+  htIdx = htProsesIndex(histLastRows);
   const ops = htOperators(histLastRows);
   chip.textContent = histLastRows.length ? `${ops.length} operator di hasil` : 'Tampilkan data dulu';
-  htSyncSel(ops);
+  htReconcile();
   htMsg('');
   htDirty = true;
   if(htEl('histTrend').open) htDrawAll();
@@ -3605,18 +3652,32 @@ function wireHistTrend(){
       if(htSel.size >= HT_MAX_OPS){ cb.checked = false; htMsg(`Maksimal ${HT_MAX_OPS} operator di grafik. Hapus centang salah satu dulu.`); return; }
       htSel.add(k);
     } else htSel.delete(k);
+    htTouched = true; htAutoNote = '';
     htMsg('');
     htUpdateCount();
     htRenderCharts();
   });
+  // Memilih proses langsung mengisi operatornya (8 dengan hari data terbanyak di proses itu), tanpa memilih operator dulu
   htEl('htProses').addEventListener('change', e=>{
     const v = e.target.value;
-    if(v === ''){ htProsesMode = 'all'; htProsesKey = ''; } else { htProsesMode = 'one'; htProsesKey = v; }
-    htFocus = '';
+    htTouched = true; htAutoNote = ''; htFocus = '';
+    if(v === ''){
+      htProsesMode = 'all'; htProsesKey = '';
+      if(!htSel.size) htSel = new Set(htFirstByName(HT_MAX_OPS));
+    } else {
+      htProsesMode = 'one'; htProsesKey = v;
+      htSel = new Set(htTopOpsOf(htIdx, v, HT_MAX_OPS));
+    }
+    htMsg('');
+    htRenderPicker();
     htRenderCharts();
   });
-  htEl('htFirst8').addEventListener('click', ()=>{ htSel = new Set(htOperators(histLastRows).slice(0, HT_MAX_OPS).map(o=> o.nip.toUpperCase())); htMsg(''); htRenderPicker(); htRenderCharts(); });
-  htEl('htClear').addEventListener('click', ()=>{ htSel = new Set(); htFocus = ''; htMsg(''); htRenderPicker(); htRenderCharts(); });
+  htEl('htFirst8').addEventListener('click', ()=>{
+    htTouched = true; htAutoNote = '';
+    htSel = new Set(htProsesMode === 'one' ? htTopOpsOf(htIdx, htProsesKey, HT_MAX_OPS) : htFirstByName(HT_MAX_OPS));
+    htMsg(''); htRenderPicker(); htRenderCharts();
+  });
+  htEl('htClear').addEventListener('click', ()=>{ htTouched = true; htAutoNote = ''; htSel = new Set(); htFocus = ''; htMsg(''); htRenderPicker(); htRenderCharts(); });
   htEl('htCharts').addEventListener('click', e=>{
     const b = e.target.closest ? e.target.closest('button.ht-leg') : null;
     if(!b) return;
