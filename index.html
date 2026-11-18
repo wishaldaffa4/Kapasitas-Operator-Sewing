@@ -516,11 +516,13 @@
       <details id="histTrend">
         <summary class="panel-title" style="cursor:pointer;">📈 Tren Harian: kapasitas dan efisiensi per hari <span class="lh-chip" id="htChip" style="margin-left:8px;">Tampilkan data dulu</span></summary>
         <div class="panel-body">
-          <div class="hint" style="margin-top:0;">Satu garis untuk tiap operator dan proses (maksimal 8 operator dan 12 garis). Kalau satu proses punya beberapa catatan di hari yang sama, yang dipakai EFF tertingginya. Klik nama di legenda untuk memfokuskan satu garis dan melihat acuan kapasitas 100%-nya.</div>
+          <div class="hint" style="margin-top:0;">Satu garis untuk tiap operator dan proses (maksimal 8 operator dan 12 garis). Kalau satu proses punya beberapa catatan di hari yang sama, yang dipakai EFF tertingginya. Pilih satu proses di "Proses di grafik" untuk membandingkan operator pada proses yang sama (satu skala, satu acuan 100%). Klik nama di legenda untuk memfokuskan satu garis dan melihat acuan kapasitas 100%-nya.</div>
           <div class="ht-picker">
             <div class="row" style="margin-bottom:6px;align-items:center;">
               <b>Operator di grafik</b><span class="pl-sub" id="htSelCount"></span>
               <input type="text" id="htSearch" placeholder="Cari operator..." style="max-width:220px;">
+              <label for="htProses" style="margin-left:10px;"><b>Proses di grafik</b></label>
+              <select id="htProses" disabled><option value="">Semua proses</option></select>
               <button type="button" class="secondary" id="htFirst8">8 pertama</button>
               <button type="button" class="secondary" id="htClear">Kosongkan</button>
               <span class="hint" id="htMsg" style="margin:0;"></span>
@@ -3300,6 +3302,9 @@ let htSel = new Set();       // NIP (huruf besar) operator yang digambar
 let htFocus = '';            // id garis yang difokuskan lewat legenda
 let htSearch = '';
 let htDirty = true;          // hasil baru belum digambar (panel tertutup)
+let htProsesMode = 'auto';   // 'auto' (semua proses; kalau garis > 12 pakai proses dengan operator terbanyak) | 'all' | 'one'
+let htProsesKey = '';        // kunci proses saat mode 'one'
+let htProsesSig = '';        // penanda isi daftar proses (agar daftar tidak digambar ulang tanpa perlu)
 
 function htEl(id){ return document.getElementById(id); }
 function htNum(v){ if(v === '' || v == null) return null; const n = Number(v); return isFinite(n) ? n : null; }
@@ -3324,7 +3329,8 @@ function htSyncSel(ops){
 }
 
 /* --- menyusun garis: satu garis per operator x proses, satu titik per hari (EFF tertinggi) --- */
-function htBuildSeries(rows){
+function htPKey(p){ return String(p || '').trim().toUpperCase() || '(TANPA PROSES)'; }
+function htScanSeries(rows){
   const map = new Map();
   rows.forEach(r=>{
     const nip = String(r['NO. ABSEN'] || '').trim();
@@ -3336,13 +3342,39 @@ function htBuildSeries(rows){
     const proses = String(r['PROSES'] || '').trim();
     const id = nip.toUpperCase() + '||' + proses.toUpperCase();
     let s = map.get(id);
-    if(!s){ s = { id, nip, nama: String(r['NAMA'] || '').trim(), proses, points: new Map() }; map.set(id, s); }
+    if(!s){ s = { id, nip, nama: String(r['NAMA'] || '').trim(), proses, pkey: htPKey(proses), points: new Map() }; map.set(id, s); }
     let cap = null; try{ cap = htNum(lookupSmv(r['STYLE'], r['PROSES'])); }catch(e){}
     const cand = { date, eff, rata, style: String(r['STYLE'] || '').trim(), line: String(r['LINE'] || '').trim(), cap };
     const cur = s.points.get(date);
     if(!cur || (cand.eff !== null && (cur.eff === null || cand.eff > cur.eff))) s.points.set(date, cand);
   });
-  let all = [...map.values()];
+  return map;
+}
+// Daftar proses dari operator yang dipilih: urut operator terbanyak, lalu hari data terbanyak, lalu nama
+function htProsesOptions(map){
+  const m = new Map();
+  map.forEach(s=>{
+    let o = m.get(s.pkey);
+    if(!o){ o = { key: s.pkey, label: s.proses || '(tanpa proses)', ops: new Set(), days: 0 }; m.set(s.pkey, o); }
+    o.ops.add(s.nip.toUpperCase());
+    o.days += s.points.size;
+  });
+  return [...m.values()].sort((a,b)=> b.ops.size - a.ops.size || b.days - a.days || a.label.localeCompare(b.label, 'id'));
+}
+// Proses yang digambar. Otomatis: semua proses bila garis tidak lebih dari 12, selain itu proses dengan operator terbanyak.
+function htResolveProses(map, opts){
+  const keys = new Set(opts.map(o=> o.key));
+  if(htProsesMode === 'one' && !keys.has(htProsesKey)) htProsesMode = 'auto';   // proses pilihan sudah tidak ada: kembali otomatis
+  if(htProsesMode === 'all') return { key: '', auto: false };
+  if(htProsesMode === 'one') return { key: htProsesKey, auto: false };
+  if(map.size <= HT_MAX_SERIES || opts.length <= 1) return { key: '', auto: false };
+  return { key: opts[0].key, auto: true };
+}
+function htBuildSeries(rows){
+  const map = htScanSeries(rows);
+  const opts = htProsesOptions(map);
+  const res = htResolveProses(map, opts);
+  let all = [...map.values()].filter(s=> !res.key || s.pkey === res.key);
   const total = all.length;
   if(total > HT_MAX_SERIES){
     all.sort((a,b)=> b.points.size - a.points.size || a.nama.localeCompare(b.nama, 'id') || a.proses.localeCompare(b.proses, 'id'));
@@ -3351,8 +3383,10 @@ function htBuildSeries(rows){
   all.sort((a,b)=> a.nama.localeCompare(b.nama, 'id') || a.proses.localeCompare(b.proses, 'id'));
   all.forEach((s,i)=>{ s.color = HT_COLORS[i]; });
   const dates = [...new Set(all.flatMap(s=> [...s.points.keys()]))].sort();
-  return { series: all, dates, hidden: total - all.length };
+  return { series: all, dates, hidden: total - all.length, opts, key: res.key, auto: res.auto, totalAll: map.size, single: !!res.key };
 }
+// Nama garis: kalau hanya satu proses yang digambar, cukup nama operator
+function htSeriesLabel(s, data){ return data && data.single ? s.nama : `${s.nama} · ${s.proses || '(tanpa proses)'}`; }
 
 /* --- grafik SVG --- */
 function htNiceStep(x){
@@ -3400,20 +3434,37 @@ function htChartSvg(kind, data){
   if(kind === 'eff'){
     svg += `<line class="ht-ref" x1="${padL}" x2="${W - padR}" y1="${y(100).toFixed(1)}" y2="${y(100).toFixed(1)}"></line><text class="ht-axis" x="${W - padR + 6}" y="${(y(100) + 4).toFixed(1)}" style="fill:var(--warn);">100%</text>`;
   }
-  // garis acuan kapasitas 100% (putus-putus, warna sama dengan garisnya)
+  // garis acuan kapasitas 100% (putus-putus). Garis yang standarnya sama (satu nilai tetap yang sama) digabung jadi
+  // SATU garis berwarna netral; garis dengan standar berubah-ubah (beda style) digambar sendiri-sendiri.
   const refLabels = [];
-  refSeries.forEach(s=>{
-    let cur = [];
-    const segs = [];
-    dates.forEach((d,i)=>{ const p = s.points.get(d); if(p && p.cap){ cur.push({ i, cap: p.cap }); } else { if(cur.length) segs.push(cur); cur = []; } });
-    if(cur.length) segs.push(cur);
-    segs.forEach(sg=>{
-      const pts = sg.length > 1 ? sg.map(q=> [x(q.i), y(q.cap)]) : [[x(sg[0].i) - slot * 0.35, y(sg[0].cap)], [x(sg[0].i) + slot * 0.35, y(sg[0].cap)]];
-      svg += `<path class="ht-refcap" data-ref="${rdEsc(s.id)}" d="${pts.map((q,k)=> (k ? 'L' : 'M') + q[0].toFixed(1) + ' ' + q[1].toFixed(1)).join(' ')}" stroke="${s.color}" opacity="0.9"><title>Acuan 100%: ${rdEsc(s.nama)} · ${rdEsc(s.proses)}</title></path>`;
+  if(refSeries.length){
+    const constant = new Map(), varied = [];
+    refSeries.forEach(s=>{
+      const caps = [...new Set([...s.points.values()].map(p=> p.cap).filter(Boolean))];
+      if(caps.length === 1){ if(!constant.has(caps[0])) constant.set(caps[0], []); constant.get(caps[0]).push(s); }
+      else if(caps.length > 1) varied.push(s);
     });
-    const last = segs.length ? segs[segs.length - 1] : null;
-    if(last) refLabels.push({ color: s.color, y0: y(last[last.length - 1].cap) + 4, text: htFmt(last[last.length - 1].cap) });
-  });
+    constant.forEach((grp, cap)=>{
+      const idxs = dates.map((d,i)=> grp.some(s=> { const p = s.points.get(d); return p && p.cap; }) ? i : -1).filter(i=> i >= 0);
+      const x1 = x(idxs[0]) - slot * 0.35, x2 = x(idxs[idxs.length - 1]) + slot * 0.35;
+      const color = grp.length === 1 ? grp[0].color : '#e0a72e';
+      const tip = grp.length === 1 ? `Acuan 100%: ${grp[0].nama} · ${grp[0].proses}` : `Acuan 100% (sama untuk ${grp.length} garis)`;
+      svg += `<path class="ht-refcap" data-ref="${rdEsc(grp.map(s=> s.id).join(','))}" d="M${x1.toFixed(1)} ${y(cap).toFixed(1)} L${x2.toFixed(1)} ${y(cap).toFixed(1)}" stroke="${color}" opacity="0.9"><title>${rdEsc(tip)}</title></path>`;
+      refLabels.push({ color, y0: y(cap) + 4, text: htFmt(cap) });
+    });
+    varied.forEach(s=>{
+      let cur = [];
+      const segs = [];
+      dates.forEach((d,i)=>{ const p = s.points.get(d); if(p && p.cap){ cur.push({ i, cap: p.cap }); } else { if(cur.length) segs.push(cur); cur = []; } });
+      if(cur.length) segs.push(cur);
+      segs.forEach(sg=>{
+        const pts = sg.length > 1 ? sg.map(q=> [x(q.i), y(q.cap)]) : [[x(sg[0].i) - slot * 0.35, y(sg[0].cap)], [x(sg[0].i) + slot * 0.35, y(sg[0].cap)]];
+        svg += `<path class="ht-refcap" data-ref="${rdEsc(s.id)}" d="${pts.map((q,k)=> (k ? 'L' : 'M') + q[0].toFixed(1) + ' ' + q[1].toFixed(1)).join(' ')}" stroke="${s.color}" opacity="0.9"><title>Acuan 100%: ${rdEsc(s.nama)} · ${rdEsc(s.proses)}</title></path>`;
+      });
+      const last = segs.length ? segs[segs.length - 1] : null;
+      if(last) refLabels.push({ color: s.color, y0: y(last[last.length - 1].cap) + 4, text: htFmt(last[last.length - 1].cap) });
+    });
+  }
   refLabels.sort((a,b)=> a.y0 - b.y0);
   const ry = htSpread(refLabels.map(l=> l.y0), padT, H - padB, 12);
   refLabels.forEach((l,k)=>{ svg += `<text class="ht-axis" x="${W - padR + 6}" y="${ry[k].toFixed(1)}" style="fill:${l.color};font-weight:700;">${l.text}</text>`; });
@@ -3456,7 +3507,7 @@ function htChartSvg(kind, data){
 /* --- legenda dan ringkasan per garis --- */
 function htLegendHtml(data){
   return '<div class="ht-legend">' + data.series.map(s=>
-    `<button type="button" class="ht-leg${htFocus === s.id ? ' on' : ''}" data-sid="${rdEsc(s.id)}" title="Klik untuk memfokuskan garis ini"><span class="ht-sw" style="background:${s.color}"></span>${rdEsc(s.nama)} · ${rdEsc(s.proses || '(tanpa proses)')}</button>`).join('')
+    `<button type="button" class="ht-leg${htFocus === s.id ? ' on' : ''}" data-sid="${rdEsc(s.id)}" title="Klik untuk memfokuskan garis ini"><span class="ht-sw" style="background:${s.color}"></span>${rdEsc(htSeriesLabel(s, data))}</button>`).join('')
     + (htFocus ? '<button type="button" class="ht-leg" data-sid="">✕ Lepas fokus</button>' : '') + '</div>';
 }
 function htStats(s){
@@ -3478,27 +3529,43 @@ function htSummaryHtml(data){
   return `<div class="ht-chart-title">Ringkasan per garis</div><div style="overflow-x:auto;"><table class="pf-table"><thead><tr><th>Garis</th><th style="text-align:center;">Hari</th><th style="text-align:right;">Kapasitas rata-rata</th><th style="text-align:right;">Acuan 100%</th><th style="text-align:right;">EFF rata-rata</th><th style="text-align:right;">EFF tertinggi</th><th style="text-align:right;">EFF terendah</th><th>Tren EFF</th></tr></thead><tbody>`
     + data.series.map(s=>{
       const st = htStats(s);
-      return `<tr><td><span class="ht-sw" style="background:${s.color}"></span> ${rdEsc(s.nama)} · ${rdEsc(s.proses || '(tanpa proses)')}</td><td style="text-align:center;">${st.hari}</td><td style="text-align:right;">${st.kap === null ? '-' : htFmt(st.kap)}</td><td style="text-align:right;">${st.cap}</td><td style="text-align:right;">${pc(st.effAvg)}</td><td style="text-align:right;">${pc(st.effMax)}</td><td style="text-align:right;">${pc(st.effMin)}</td><td>${st.trend}</td></tr>`;
+      return `<tr><td><span class="ht-sw" style="background:${s.color}"></span> ${rdEsc(htSeriesLabel(s, data))}</td><td style="text-align:center;">${st.hari}</td><td style="text-align:right;">${st.kap === null ? '-' : htFmt(st.kap)}</td><td style="text-align:right;">${st.cap}</td><td style="text-align:right;">${pc(st.effAvg)}</td><td style="text-align:right;">${pc(st.effMax)}</td><td style="text-align:right;">${pc(st.effMin)}</td><td>${st.trend}</td></tr>`;
     }).join('') + '</tbody></table></div>';
 }
 
 /* --- menggambar --- */
+// Daftar "Proses di grafik": Semua proses + proses milik operator yang dipilih (dengan jumlah operatornya)
+function htRenderProsesSelect(opts, value, disabled){
+  const sel = htEl('htProses');
+  if(!sel) return;
+  const sig = JSON.stringify([opts.map(o=> [o.key, o.label, o.ops.size]), value, !!disabled]);
+  if(sig === htProsesSig) return;
+  htProsesSig = sig;
+  sel.innerHTML = '<option value="">Semua proses</option>' + opts.map(o=> `<option value="${rdEsc(o.key)}">${rdEsc(o.label)} (${o.ops.size} operator)</option>`).join('');
+  sel.value = value;
+  sel.disabled = !!disabled;
+}
 function htRenderCharts(){
   const box = htEl('htCharts');
-  if(!histLastRows.length){ box.innerHTML = '<div class="hint">Tampilkan data di atas dulu, lalu grafik tren muncul di sini.</div>'; return; }
-  if(!htSel.size){ box.innerHTML = '<div class="hint">Centang minimal satu operator untuk menggambar grafik.</div>'; return; }
+  if(!histLastRows.length){ htRenderProsesSelect([], '', true); box.innerHTML = '<div class="hint">Tampilkan data di atas dulu, lalu grafik tren muncul di sini.</div>'; return; }
+  if(!htSel.size){ htRenderProsesSelect([], '', true); box.innerHTML = '<div class="hint">Centang minimal satu operator untuk menggambar grafik.</div>'; return; }
   const data = htBuildSeries(histLastRows);
+  htRenderProsesSelect(data.opts, data.key, false);
   if(!data.series.length){ box.innerHTML = '<div class="hint">Operator yang dipilih tidak punya data kapasitas atau EFF pada hasil ini.</div>'; return; }
   if(htFocus && !data.series.some(s=> s.id === htFocus)) htFocus = '';
   const notes = [];
   const nOps = htOperators(histLastRows).length;
   if(nOps > HT_MAX_OPS) notes.push(`Menampilkan ${htSel.size} dari ${nOps} operator di hasil; ganti pilihan di daftar centang di atas.`);
-  if(data.hidden) notes.push(`${data.hidden} garis tidak digambar (maksimal ${HT_MAX_SERIES}; yang dipakai yang hari datanya terbanyak). Persempit filter Proses atau kurangi operator.`);
+  if(data.auto){
+    const o = data.opts[0];
+    notes.push(`Ada ${data.totalAll} garis (lebih dari ${HT_MAX_SERIES}), jadi yang ditampilkan proses ${o.label} yang paling banyak operatornya (${o.ops.size} operator). Pilih proses lain atau "Semua proses" di daftar "Proses di grafik".`);
+  }
+  if(data.hidden) notes.push(`${data.hidden} garis tidak digambar (maksimal ${HT_MAX_SERIES}; yang dipakai yang hari datanya terbanyak). Pilih satu proses di daftar "Proses di grafik" atau kurangi operator.`);
   const kapHint = (!htFocus && data.series.length > 3) ? '<div class="hint" style="margin:0 0 4px;">Garis acuan kapasitas 100% muncul untuk satu garis saat namanya diklik di legenda.</div>' : '';
   box.innerHTML = (notes.length ? `<div class="hint">${notes.map(rdEsc).join(' ')}</div>` : '')
     + htLegendHtml(data)
-    + `<div class="ht-chart-title">Kapasitas per hari (rata-rata)</div>${kapHint}<div class="ht-scroll">${htChartSvg('kap', data)}</div>`
-    + `<div class="ht-chart-title">Efisiensi per hari (%)</div><div class="ht-scroll">${htChartSvg('eff', data)}</div>`
+    + `<div class="ht-chart-title">Kapasitas per hari (rata-rata)${data.key ? ' · ' + rdEsc(data.opts.find(o=> o.key === data.key).label) : ''}</div>${kapHint}<div class="ht-scroll">${htChartSvg('kap', data)}</div>`
+    + `<div class="ht-chart-title">Efisiensi per hari (%)${data.key ? ' · ' + rdEsc(data.opts.find(o=> o.key === data.key).label) : ''}</div><div class="ht-scroll">${htChartSvg('eff', data)}</div>`
     + htSummaryHtml(data);
 }
 function htUpdateCount(){
@@ -3540,6 +3607,12 @@ function wireHistTrend(){
     } else htSel.delete(k);
     htMsg('');
     htUpdateCount();
+    htRenderCharts();
+  });
+  htEl('htProses').addEventListener('change', e=>{
+    const v = e.target.value;
+    if(v === ''){ htProsesMode = 'all'; htProsesKey = ''; } else { htProsesMode = 'one'; htProsesKey = v; }
+    htFocus = '';
     htRenderCharts();
   });
   htEl('htFirst8').addEventListener('click', ()=>{ htSel = new Set(htOperators(histLastRows).slice(0, HT_MAX_OPS).map(o=> o.nip.toUpperCase())); htMsg(''); htRenderPicker(); htRenderCharts(); });
